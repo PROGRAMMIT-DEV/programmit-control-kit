@@ -71,9 +71,12 @@ def merge_configs(existing, kit):
     if "provider" in existing:
         result["provider"] = existing["provider"]
     
-    # Aplicar/actualizar permission del kit
+    # Aplicar/actualizar configuración portable del kit
     if "permission" in kit:
         result["permission"] = kit["permission"]
+
+    if "default_agent" in kit:
+        result["default_agent"] = kit["default_agent"]
     
     # Preservar otras claves top-level existentes
     for key in existing:

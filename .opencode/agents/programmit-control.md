@@ -1,6 +1,7 @@
 ---
 description: Operador técnico directo del proyecto. Ejecuta diagnóstico, cambios, tests, infraestructura y verificación sin delegación ni loops.
 mode: primary
+steps: 12
 permission:
   edit: allow
   bash:
