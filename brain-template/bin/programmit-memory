@@ -55,8 +55,14 @@ def reindex():
             except Exception:
                 continue
 
+            status = str(obj.get("status") or "").upper()
+
+            # Memoria obsoleta nunca entra al índice.
+            if status == "OBSOLETE":
+                continue
+
             area = str(obj.get("area") or obj.get("key") or "")
-            verified = 1 if obj.get("verified") is True else 0
+            verified = 1 if obj.get("verified") is True or status == "VERIFIED" else 0
 
             # Learnings con verification PASS cuentan como verificados.
             verification = obj.get("verification")
