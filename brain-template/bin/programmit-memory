@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import re
+import sqlite3
+from pathlib import Path
+
+BRAIN = Path(__file__).resolve().parent.parent
+DB = BRAIN / "memory-index.sqlite"
+
+SOURCES = {
+    "learning": BRAIN / "LEARNINGS.jsonl",
+    "decision": BRAIN / "DECISIONS.jsonl",
+    "error": BRAIN / "ERRORS.jsonl",
+    "preference": BRAIN / "USER_PREFERENCES.jsonl",
+}
+
+PRIORITY = {
+    "decision": 40,
+    "learning": 35,
+    "error": 30,
+    "preference": 25,
+}
+
+def db():
+    con = sqlite3.connect(DB)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS memories (
+            id INTEGER PRIMARY KEY,
+            kind TEXT NOT NULL,
+            source_line INTEGER NOT NULL,
+            area TEXT,
+            verified INTEGER DEFAULT 0,
+            content TEXT NOT NULL,
+            UNIQUE(kind, source_line)
+        )
+    """)
+    return con
+
+def reindex():
+    con = db()
+    con.execute("DELETE FROM memories")
+
+    for kind, path in SOURCES.items():
+        if not path.exists():
+            continue
+
+        for n, raw in enumerate(path.read_text(errors="ignore").splitlines(), 1):
+            if not raw.strip():
+                continue
+
+            try:
+                obj = json.loads(raw)
+            except Exception:
+                continue
+
+            area = str(obj.get("area") or obj.get("key") or "")
+            verified = 1 if obj.get("verified") is True else 0
+
+            # Learnings con verification PASS cuentan como verificados.
+            verification = obj.get("verification")
+            if isinstance(verification, dict):
+                if any(str(v).upper().startswith("PASS") for v in verification.values()):
+                    verified = 1
+
+            content = json.dumps(obj, ensure_ascii=False)
+
+            con.execute("""
+                INSERT OR REPLACE INTO memories
+                (kind, source_line, area, verified, content)
+                VALUES (?, ?, ?, ?, ?)
+            """, (kind, n, area, verified, content))
+
+    con.commit()
+    con.close()
+
+def terms(q):
+    return [
+        x.lower()
+        for x in re.findall(r"[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9_./-]+", q)
+        if len(x) >= 2
+    ]
+
+def search(query, limit):
+    if not DB.exists():
+        reindex()
+
+    con = db()
+    rows = con.execute(
+        "SELECT kind, area, verified, content FROM memories"
+    ).fetchall()
+    con.close()
+
+    qs = terms(query)
+    scored = []
+
+    for kind, area, verified, content in rows:
+        haystack = f"{area} {content}".lower()
+
+        score = PRIORITY.get(kind, 0)
+        score += 25 if verified else 0
+
+        for token in qs:
+            if token in haystack:
+                score += 12
+            if token in str(area).lower():
+                score += 10
+
+        # Exigir al menos alguna coincidencia real.
+        if qs and not any(t in haystack for t in qs):
+            continue
+
+        scored.append((score, content))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    for _, content in scored[:limit]:
+        print(content)
+
+def main():
+    p = argparse.ArgumentParser()
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("reindex")
+
+    s = sub.add_parser("search")
+    s.add_argument("query")
+    s.add_argument("--limit", type=int, default=3)
+
+    args = p.parse_args()
+
+    if args.cmd == "reindex":
+        reindex()
+        return
+
+    if args.cmd == "search":
+        search(args.query, max(1, min(args.limit, 5)))
+
+if __name__ == "__main__":
+    main()

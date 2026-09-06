@@ -97,3 +97,16 @@ Responder exactamente:
 ⚠️ No hay nada que deshacer en esta nueva sesión.
 
 Detenerse.
+
+## RECUPERACIÓN INTELIGENTE DE MEMORIA
+
+Cuando una tarea pueda beneficiarse de conocimiento previo del proyecto:
+
+- NO leer LEARNINGS.jsonl, DECISIONS.jsonl, ERRORS.jsonl o USER_PREFERENCES.jsonl completos.
+- Usar:
+  `.programmit/bin/programmit-memory search "<consulta>" --limit 3`
+- Recuperar máximo 3 recuerdos normalmente.
+- Priorizar recuerdos verificados y decisiones canónicas.
+- Si la búsqueda no devuelve nada, continuar sin inventar memoria.
+- No consultar memoria cuando la tarea es obvia y ya contiene todo el contexto necesario.
+- Nunca indexar ni leer `.programmit/secrets/`.
