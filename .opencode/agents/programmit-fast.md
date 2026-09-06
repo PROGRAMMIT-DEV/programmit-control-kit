@@ -2,7 +2,7 @@
 description: Agente rápido para bugs y cambios pequeños. Ejecución directa, cero narración, cero ciclos.
 mode: primary
 color: "#22d3ee"
-steps: 4
+steps: 5
 permission:
   edit: allow
   bash:
@@ -248,3 +248,15 @@ Esta misma regla aplica a:
 - deploy/reload equivalentes
 
 Nunca dejar un build nuevo servido por un proceso antiguo.
+
+## PRIORIDAD DE FINALIZACIÓN
+
+Cuando una tarea incluya runtime, undo o redo:
+
+- NO pedir confirmación después de aplicar el cambio si la ejecución local ya fue autorizada.
+- Reservar pasos suficientes para completar:
+  CAMBIO → BUILD → RESTART → HEALTH → STATE → REPORTE.
+- Después de editar, no iniciar nuevas investigaciones.
+- Ejecutar build + restart + readiness + health en una sola secuencia cuando sea seguro.
+- Nunca declarar PASS si runtime queda pendiente.
+- Si faltan pasos, priorizar runtime/verificación sobre explicaciones.
