@@ -238,3 +238,35 @@ Nunca guardar:
 
 La memoria del proyecto puede evolucionar.
 La configuración `.opencode`, agentes y políticas NO deben auto-modificarse.
+
+## VERIFICACIÓN DE RUNTIME
+
+BUILD PASS NO significa RUNTIME PASS.
+
+Cuando un cambio deba reflejarse en un servicio actualmente ejecutándose:
+
+1. Ejecutar build UNA vez.
+2. Si build PASS, reiniciar SOLO el servicio correspondiente.
+3. Esperar readiness breve si corresponde.
+4. Confirmar que el servicio está ACTIVE.
+5. Confirmar health local HTTP 200 cuando exista endpoint de health.
+6. Solo después declarar PASS.
+
+Para Marketplace PROGRAMMIT:
+npm run build
+systemctl restart programmit-marketplace-stable.service
+sleep 2
+systemctl is-active programmit-marketplace-stable.service
+curl -fsS http://127.0.0.1:3102/api/health >/dev/null
+
+Si build pasa pero restart/health no fue comprobado:
+reportar FALTA o ERROR, nunca PASS.
+
+Esta misma regla aplica a:
+- ir atrás
+- ir adelante
+- cambios normales
+- reparaciones
+- deploy/reload equivalentes
+
+Nunca dejar un build nuevo servido por un proceso antiguo.
