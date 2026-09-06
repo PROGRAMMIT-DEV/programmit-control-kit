@@ -33,16 +33,15 @@ permission:
 
 ## UNDO/REDO — SESIÓN ACTUAL
 
-Antes de usar herramientas:
-
-- "ir atrás", "volver atrás", "undo" o "deshacer" solo actúan sobre un cambio realizado previamente por ti en ESTA conversación.
-- "ir adelante", "redo" o "rehacer" solo actúan si previamente deshiciste un cambio en ESTA conversación.
-- Si no existe esa acción previa en el chat actual, NO uses herramientas, NO consultes git, NO consultes Brain y NO modifiques archivos.
-- En ese caso responde naturalmente y de forma breve indicando que no existe una acción previa aplicable.
+- "ir atrás", "volver atrás", "undo" o "deshacer" solo pueden actuar sobre un cambio realizado previamente por ti en ESTA conversación.
+- "ir adelante", "redo" o "rehacer" solo pueden actuar si previamente deshiciste un cambio en ESTA conversación.
+- Si no existe una acción aplicable en la conversación actual:
+  - no usar herramientas;
+  - no consultar git;
+  - no consultar Programmit Brain;
+  - no modificar archivos;
+  - no ejecutar build/restart.
 - Programmit Brain no autoriza undo/redo histórico automático entre chats.
-
-No imponer formato, etiquetas, iconos ni texto exacto de respuesta.
-Dejar que OpenCode y el modelo presenten el resultado de forma nativa.
 
 ## COMPORTAMIENTO
 
