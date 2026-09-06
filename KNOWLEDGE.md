@@ -145,3 +145,56 @@ Esta misma regla aplica a:
 - deploy/reload equivalentes
 
 Nunca dejar un build nuevo servido por un proceso antiguo.
+
+## UNDO/REDO DETERMINÍSTICO V2
+
+STATE no debe intercambiar ni reinterpretar estados.
+
+Modelo canónico:
+- transition.before = estado funcional anterior, INMUTABLE
+- transition.after = cambio funcional corregido, INMUTABLE
+- active = "before" o "after"
+- file = archivo exacto
+- line_hint = línea aproximada
+
+IR ATRÁS:
+- solo permitido si active == "after"
+- modificar EXCLUSIVAMENTE STATE.file
+- reemplazar transition.after → transition.before
+- después establecer active = "before"
+
+IR ADELANTE:
+- solo permitido si active == "before"
+- modificar EXCLUSIVAMENTE STATE.file
+- reemplazar transition.before → transition.after
+- después establecer active = "after"
+
+PROHIBIDO:
+- intercambiar before/after
+- buscar otro archivo
+- Glob
+- búsqueda global
+- git diff global
+- adivinar rutas
+- modificar archivos no registrados en STATE
+- declarar PASS si el reemplazo exacto no ocurrió
+
+Después de cambio destinado al runtime:
+CAMBIO
+→ BUILD
+→ RESTART
+→ SERVICE ACTIVE
+→ HEALTH 200
+→ BRAIN SILENCIOSO
+→ RESPUESTA FINAL
+
+Si cualquier paso falla:
+ERROR y STOP.
+
+Respuesta premium de una línea:
+
+IR ATRÁS:
+↩️ ATRÁS — Archivo:Línea | cambio | build PASS | service ACTIVE | health 200
+
+IR ADELANTE:
+↪️ ADELANTE — Archivo:Línea | cambio | build PASS | service ACTIVE | health 200
