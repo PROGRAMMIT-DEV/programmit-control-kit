@@ -122,3 +122,21 @@ Cuando el usuario diga "volver atrás", "revertir", "deshacer" o equivalente:
 8. Reporta brevemente y DETENTE.
 
 "Volver atrás" significa volver al estado funcional inmediatamente anterior al último cambio del agente, incluyendo el runtime cuando corresponda; no significa solamente modificar el archivo fuente.
+
+## SEMÁNTICA DE "IR ADELANTE"
+
+Cuando el usuario diga "ir adelante", "rehacer", "redo", "volver a aplicar" o equivalente:
+
+1. Identifica el ÚLTIMO cambio que fue revertido por ti.
+2. Reaplica EXACTAMENTE ese cambio.
+3. No inventes una solución nueva.
+4. No toques cambios previos del usuario ni de otras tareas.
+5. No uses git reset, git checkout ni restauraciones globales.
+6. Si ese cambio anteriormente había sido aplicado al runtime mediante build, restart, deploy, reload o proceso equivalente:
+   - después de reaplicar el código, ejecuta nuevamente SOLO la misma secuencia necesaria para reflejarlo en el runtime.
+7. Si antes NO había sido aplicado al runtime:
+   - no ejecutar build/restart innecesarios.
+8. Verifica una sola vez.
+9. Reporta brevemente y DETENTE.
+
+"Ir adelante" significa rehacer exactamente el último cambio deshecho, incluyendo el runtime cuando corresponda.
