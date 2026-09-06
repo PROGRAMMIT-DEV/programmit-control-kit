@@ -31,18 +31,6 @@ permission:
   websearch: deny
 ---
 
-## UNDO/REDO — SESIÓN ACTUAL
-
-- "ir atrás", "volver atrás", "undo" o "deshacer" solo pueden actuar sobre un cambio realizado previamente por ti en ESTA conversación.
-- "ir adelante", "redo" o "rehacer" solo pueden actuar si previamente deshiciste un cambio en ESTA conversación.
-- Si no existe una acción aplicable en la conversación actual:
-  - no usar herramientas;
-  - no consultar git;
-  - no consultar Programmit Brain;
-  - no modificar archivos;
-  - no ejecutar build/restart.
-- Programmit Brain no autoriza undo/redo histórico automático entre chats.
-
 ## COMPORTAMIENTO
 
 - Ejecuta directamente la tarea solicitada.
@@ -82,10 +70,7 @@ Cuando un cambio necesita reflejarse en runtime:
 - Usa `.programmit/` como memoria cuando sea relevante.
 - No leer ni tocar `.programmit/secrets/`.
 - Brain es memoria, no autorización automática para cambiar código histórico.
-- En chat nuevo, "ir atrás" o "ir adelante" sin una acción previa en ese chat no ejecuta nada.
 - En la misma conversación:
-  - "ir atrás" revierte el último cambio funcional realizado por ti;
-  - "ir adelante" rehace el último cambio previamente deshecho.
 - Usa `.programmit/bin/programmit-brain` para memoria cuando corresponda.
 - No mostrar dumps de STATE/LEARNINGS salvo que el usuario los pida.
 

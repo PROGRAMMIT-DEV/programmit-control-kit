@@ -29,16 +29,3 @@ permission:
   webfetch: deny
   websearch: deny
 ---
-
-## UNDO/REDO — SESIÓN ACTUAL
-
-- "ir atrás", "volver atrás", "undo" o "deshacer" solo pueden actuar sobre un cambio realizado previamente por ti en ESTA conversación.
-- "ir adelante", "redo" o "rehacer" solo pueden actuar si previamente deshiciste un cambio en ESTA conversación.
-- Si no existe una acción aplicable en la conversación actual:
-  - no usar herramientas;
-  - no consultar git;
-  - no consultar Programmit Brain;
-  - no modificar archivos;
-  - no ejecutar build/restart.
-- Programmit Brain no autoriza undo/redo histórico automático entre chats.
-
