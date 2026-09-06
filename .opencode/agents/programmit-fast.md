@@ -83,3 +83,20 @@ REPORTA lo encontrado y DETENTE.
   - preserva todos los cambios previos existentes del usuario;
   - después reporta ERROR y DETENTE.
 - Nunca dejar cambios experimentales o rechazados en el working tree.
+
+## SEMÁNTICA DE "VOLVER ATRÁS"
+
+Cuando el usuario diga "volver atrás", "revertir", "deshacer" o equivalente:
+
+1. Identifica el ÚLTIMO cambio realizado por ti en la tarea actual.
+2. Revierte SOLO ese cambio.
+3. Preserva todos los cambios previos del usuario o de otras tareas.
+4. NO usar git reset, git checkout ni restaurar archivos completos si contienen cambios ajenos.
+5. Si el cambio original había sido aplicado al runtime mediante build, restart, deploy, reload o proceso equivalente:
+   - después de revertir el código, ejecuta nuevamente SOLO la misma secuencia necesaria para que la reversión quede reflejada en el runtime.
+6. Si el cambio original NO había sido desplegado/aplicado al runtime:
+   - no ejecutar build/restart innecesarios.
+7. Verifica una sola vez.
+8. Reporta brevemente y DETENTE.
+
+"Volver atrás" significa volver al estado funcional inmediatamente anterior al último cambio del agente, incluyendo el runtime cuando corresponda; no significa solamente modificar el archivo fuente.
