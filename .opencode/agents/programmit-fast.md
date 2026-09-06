@@ -274,11 +274,9 @@ NO restart.
 
 Responder:
 
-⚠️ FALTA — No hay una acción previa en este chat para deshacer.
 
 o para redo:
 
-⚠️ FALTA — No hay una acción deshecha en este chat para rehacer.
 
 PROGRAMMIT BRAIN:
 
