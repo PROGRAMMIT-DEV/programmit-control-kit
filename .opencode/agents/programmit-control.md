@@ -110,3 +110,16 @@ Cuando una tarea pueda beneficiarse de conocimiento previo del proyecto:
 - Si la búsqueda no devuelve nada, continuar sin inventar memoria.
 - No consultar memoria cuando la tarea es obvia y ya contiene todo el contexto necesario.
 - Nunca indexar ni leer `.programmit/secrets/`.
+
+## APRENDIZAJE AUTOMÁTICO
+
+Al finalizar una tarea técnica con solución realmente verificada:
+- Si existe conocimiento técnico reutilizable, guardar UNA memoria usando `programmit-brain learn-verified`.
+- Solo hechos demostrados.
+- No hipótesis.
+- No cambios triviales.
+- No secretos.
+- Reutilizar canonical key existente para el mismo concepto.
+- Máximo 1 learning automático por tarea normal.
+- Si termina ERROR/FALTA/PENDING, NO guardar VERIFIED.
+- Guardado silencioso, sin cambiar el formato normal de respuesta.

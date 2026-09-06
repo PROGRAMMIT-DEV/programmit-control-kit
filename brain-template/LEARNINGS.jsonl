@@ -1,0 +1,2 @@
+{"type": "learning", "area": "testing", "key": "v27.case.a", "problem": "Test A", "solution": "OK", "verified": true, "status": "VERIFIED", "date": "2026-09-06T22:35:02.516146+00:00", "verification": {"evidence": ["PASS"]}, "canonical_key": "v27.case.a"}
+{"type": "learning", "area": "regression", "key": "v24.dedup", "canonical_key": "v24.dedup", "value": "Test V2.4", "verified": true, "status": "VERIFIED", "date": "2026-09-06T22:35:05.968532+00:00"}

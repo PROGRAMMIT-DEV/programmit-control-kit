@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Programmit Brain V2.6 — canonical keys + deduplication + contradiction detection.
+Programmit Brain V2.7 — canonical keys + deduplication + contradiction detection + verified learning.
 
 Key normalization (deterministic):
   trim → lowercase → spaces/underscores → single dots → strip leading/trailing dots
@@ -21,6 +21,13 @@ Conflict Detection (V2.6):
   - Threshold >= 0.75.
   - Mark new memory as REVIEW_REQUIRED with conflicts_with list.
   - Never auto-obsoletes based on this.
+
+Verified Learning (V2.7):
+  - New command `learn-verified` for automatic learning after verified tasks.
+  - Requires: area, key, problem, solution, at least one --evidence.
+  - Validates evidence does not contain ERROR/FAIL/PENDING states.
+  - Stores as learning type with verification evidence.
+  - Reuses V2.4 deduplication and V2.6 conflict detection.
 """
 
 import argparse
@@ -231,6 +238,168 @@ def cmd_redo(args):
     state["updated_at"] = now()
 
     save_state(state)
+
+def validate_evidence(evidence_list):
+    """Validate evidence list for forbidden states."""
+    forbidden = ["ERROR", "FAIL", "FAILED", "PENDING", "UNKNOWN", "FALTA", "PROVISIONAL"]
+    for e in evidence_list:
+        e_upper = e.upper()
+        for f in forbidden:
+            if f in e_upper:
+                return False
+    return True
+
+def cmd_learn_verified(args):
+    """Handle learn-verified command for controlled verified learning."""
+    # Validation
+    if not args.area:
+        print("ERROR: Missing required argument --area", file=sys.stderr)
+        sys.exit(1)
+    if not args.key:
+        print("ERROR: Missing required argument --key", file=sys.stderr)
+        sys.exit(1)
+    if not args.problem:
+        print("ERROR: Missing required argument --problem", file=sys.stderr)
+        sys.exit(1)
+    if not args.solution:
+        print("ERROR: Missing required argument --solution", file=sys.stderr)
+        sys.exit(1)
+    if not args.evidence or len(args.evidence) == 0:
+        print("ERROR: At least one --evidence is required", file=sys.stderr)
+        sys.exit(1)
+    
+    # Check for empty evidence
+    for e in args.evidence:
+        if not e.strip():
+            print("ERROR: Evidence cannot be empty", file=sys.stderr)
+            sys.exit(1)
+    
+    # Validate evidence states
+    if not validate_evidence(args.evidence):
+        print("ERROR: Evidence contains forbidden states (ERROR/FAIL/PENDING/etc)", file=sys.stderr)
+        sys.exit(1)
+    
+    # Build verification evidence list
+    evidence = args.evidence
+    
+    # Create learning record
+    record = {
+        "type": "learning",
+        "area": args.area,
+        "key": args.key,
+        "problem": args.problem,
+        "solution": args.solution,
+        "verified": True,
+        "status": "VERIFIED",
+        "date": now(),
+        "verification": {
+            "evidence": evidence
+        }
+    }
+    
+    if args.root_cause:
+        record["root_cause"] = args.root_cause
+    if args.file:
+        record["file"] = args.file
+    
+    # Use existing cmd_append logic
+    path = FILES["learning"]
+    timestamp = now()
+    new_canonical = canonical_key(args.key)
+    use_dedup = True  # learning is in DEDUP_KINDS
+    use_conflict = True  # learning is in CONFLICT_KINDS and verified
+    
+    lines = []
+    duplicate = False
+    conflicts = []
+
+    if path.exists():
+        for raw in path.read_text(errors="ignore").splitlines():
+            if not raw.strip():
+                continue
+
+            try:
+                obj = json.loads(raw)
+            except Exception:
+                lines.append(raw)
+                continue
+
+            # Compute canonical key for legacy entries missing it
+            obj_ck = obj.get("canonical_key") or canonical_key(obj.get("key", ""))
+            active = str(obj.get("status") or "").upper() != "OBSOLETE"
+
+            if active and obj_ck == new_canonical:
+                # For learn-verified, we compare by problem/solution, not value
+                same_solution = (
+                    obj.get("problem") == args.problem
+                    and obj.get("solution") == args.solution
+                    and obj.get("area") == args.area
+                    and obj.get("file") == args.file
+                )
+
+                if same_solution:
+                    # Identical memory exists → no duplicate
+                    duplicate = True
+                    # Upgrade PROVISIONAL → VERIFIED if new is VERIFIED
+                    if args.verified and obj.get("status") != "VERIFIED":
+                        obj["verified"] = True
+                        obj["status"] = "VERIFIED"
+                        obj["verified_at"] = timestamp
+                elif args.verified:
+                    # Solution changed + new is VERIFIED → old becomes OBSOLETE
+                    obj["status"] = "OBSOLETE"
+                    obj["obsolete_reason"] = (
+                        "Superseded by newer VERIFIED memory with same canonical key"
+                    )
+                    obj["superseded_at"] = timestamp
+                    obj["superseded_by"] = args.key
+            
+            # Conflict Detection (V2.6)
+            if use_conflict:
+                obj_status = str(obj.get("status") or "").upper()
+                obj_kind = obj.get("type") or ""
+                
+                # Compare against active VERIFIED learning/decision
+                if (
+                    active
+                    and obj_status == "VERIFIED"
+                    and obj_kind in CONFLICT_KINDS
+                    and obj_ck != new_canonical
+                ):
+                    sim = similarity_score(record, obj)
+                    if sim >= 0.75:
+                        conflicts.append({
+                            "kind": obj_kind,
+                            "key": obj.get("key", ""),
+                            "area": obj.get("area", ""),
+                            "file": obj.get("file", ""),
+                            "similarity": round(sim, 4)
+                        })
+
+            # Migrate: add canonical_key to legacy entries
+            if use_dedup and "canonical_key" not in obj:
+                obj["canonical_key"] = obj_ck
+
+            lines.append(json.dumps(obj, ensure_ascii=False))
+
+    # Append new record unless it's an exact duplicate
+    if not duplicate:
+        if conflicts:
+            record["conflict_status"] = "REVIEW_REQUIRED"
+            record["conflicts_with"] = conflicts
+        
+        lines.append(json.dumps(record, ensure_ascii=False))
+
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text("\n".join(lines) + ("\n" if lines else ""))
+    tmp.replace(path)
+
+    # Invalida índice para que la siguiente búsqueda vea la memoria nueva.
+    index = BRAIN / "memory-index.sqlite"
+    if index.exists():
+        index.unlink()
+    
+    print(json.dumps({"status": "VERIFIED", "key": canonical_key(args.key)}, ensure_ascii=False))
 
 def cmd_append(args):
     path = FILES[args.kind]
@@ -547,6 +716,18 @@ def main():
     res.add_argument("--winner", required=True)
     res.add_argument("--loser", required=True)
     res.set_defaults(func=cmd_resolve_conflict)
+
+    # V2.7 Commands
+    lv = sub.add_parser("learn-verified")
+    lv.add_argument("--area", required=True)
+    lv.add_argument("--key", required=True)
+    lv.add_argument("--problem", required=True)
+    lv.add_argument("--solution", required=True)
+    lv.add_argument("--evidence", action="append", required=True)
+    lv.add_argument("--file")
+    lv.add_argument("--root-cause")
+    lv.add_argument("--verified", action="store_true")
+    lv.set_defaults(func=cmd_learn_verified)
 
     args = parser.parse_args()
     args.func(args)
