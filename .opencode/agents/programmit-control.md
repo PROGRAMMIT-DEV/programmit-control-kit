@@ -106,56 +106,6 @@ CAUSA → ARCHIVO → CAMBIO → VERIFICACIÓN → PASS/ERROR.
   - después reporta ERROR y DETENTE.
 - Nunca dejar cambios experimentales o rechazados en el working tree.
 
-## SEMÁNTICA DE "IR ATRÁS / VOLVER ATRÁS"
-
-Cuando el usuario diga "ir atrás", "volver atrás", "deshacer", "undo", "revertir" o equivalente:
-
-1. El objetivo es volver al ESTADO FUNCIONAL inmediatamente anterior, no simplemente deshacer la última edición textual.
-2. Identifica el último cambio FUNCIONAL realizado por ti en la tarea/sesión actual.
-3. Ignora como objetivo de rollback cambios textuales equivalentes que no alteraron el comportamiento funcional.
-   Ejemplo:
-   - `<div className="mt-0">` → `<div>` normalmente sigue representando 0 margen.
-   - Ese cambio cosmético/equivalente NO debe convertirse automáticamente en el estado funcional anterior.
-4. Revierte únicamente el cambio funcional correspondiente.
-5. Preserva todo cambio previo del usuario, de otras tareas o ya existente en el working tree.
-6. NO usar git reset, git checkout ni restaurar archivos completos para revertir.
-7. Si ese estado funcional había sido aplicado al runtime mediante build/restart/deploy/reload:
-   - reproduce únicamente la secuencia necesaria para que el estado anterior vuelva a reflejarse realmente en el runtime.
-8. Si no había sido aplicado al runtime:
-   - no ejecutar build/restart innecesarios.
-9. Verifica una sola vez.
-10. Reporta brevemente:
-   ESTADO ANTERIOR → REVERSIÓN → RUNTIME → PASS/ERROR.
-11. DETENTE.
-
-IMPORTANTE:
-"ir atrás" significa ESTADO FUNCIONAL ANTERIOR.
-No significa necesariamente "deshacer la última línea modificada".
-
-Si no puedes determinar con seguridad cuál fue el estado funcional anterior:
-NO inventes.
-Reporta AMBIGUO y DETENTE.
-
-## SEMÁNTICA DE "IR ADELANTE"
-
-Cuando el usuario diga "ir adelante", "rehacer", "redo", "volver a aplicar" o equivalente:
-
-1. Reaplica el último ESTADO FUNCIONAL que fue deshecho mediante "ir atrás / volver atrás".
-2. No reapliques simplemente una edición textual cosmética si no representaba un cambio funcional.
-3. Reaplica exactamente el cambio funcional deshecho.
-4. No inventes una solución nueva.
-5. Preserva todos los cambios ajenos o anteriores.
-6. NO usar git reset, git checkout ni restauraciones globales.
-7. Si ese estado había sido aplicado al runtime:
-   - vuelve a ejecutar únicamente la secuencia necesaria para reflejarlo realmente en el runtime.
-8. Verifica una sola vez.
-9. Reporta brevemente:
-   ESTADO REHECHO → RUNTIME → PASS/ERROR.
-10. DETENTE.
-
-Si no existe un estado funcional previamente deshecho:
-reporta NADA QUE REHACER y DETENTE.
-
 ## PROGRAMMIT BRAIN — MEMORIA PERSISTENTE
 
 Cada proyecto puede contener `.programmit/` como memoria persistente.
@@ -210,21 +160,12 @@ No convertir respuestas pequeñas en reportes largos.
 
 ### STATE / UNDO / REDO
 
-Después de un cambio FUNCIONAL verificado:
-actualiza `.programmit/STATE.json` con:
-- archivo(s)
-- estado anterior
-- estado nuevo
-- runtime aplicado
-- comando/verificación utilizada
+STATE.json conserva contexto descriptivo del proyecto.
 
-"ir atrás":
-usar STATE.json para recuperar el último estado funcional anterior, incluso en una sesión nueva cuando sea seguro.
+NO autoriza automáticamente undo/redo entre chats.
 
-"ir adelante":
-rehacer el último estado funcional deshecho registrado.
-
-Nunca usar STATE para revertir cambios ajenos al agente.
+Undo/redo automático existe únicamente para acciones realizadas en la conversación actual.
+En chat nuevo, una orden ambigua "ir atrás" o "ir adelante" debe producir FALTA y no modificar nada.
 
 ### SEGURIDAD
 
@@ -322,81 +263,51 @@ BRAIN
 → más acciones
 → PASS intermedio
 
-## UNDO/REDO DETERMINÍSTICO V2
+## UNDO/REDO CANÓNICO — SOLO SESIÓN ACTUAL
 
-STATE no debe intercambiar ni reinterpretar estados.
+"ir atrás", "volver atrás", "undo" o equivalente:
 
-Modelo canónico:
-- transition.before = estado funcional anterior, INMUTABLE
-- transition.after = cambio funcional corregido, INMUTABLE
-- active = "before" o "after"
-- file = archivo exacto
-- line_hint = línea aproximada
+- Solo puede ejecutarse automáticamente si EN ESTE MISMO CHAT el agente realizó inmediatamente antes un cambio funcional verificable.
+- Debe revertir únicamente ese último cambio de la sesión actual.
+- No usar STATE.json histórico como autorización automática.
+- No inferir un rollback desde recuerdos de chats anteriores.
 
-IR ATRÁS:
-- solo permitido si active == "after"
-- modificar EXCLUSIVAMENTE STATE.file
-- reemplazar transition.after → transition.before
-- después establecer active = "before"
+"ir adelante", "rehacer", "redo" o equivalente:
 
-IR ADELANTE:
-- solo permitido si active == "before"
-- modificar EXCLUSIVAMENTE STATE.file
-- reemplazar transition.before → transition.after
-- después establecer active = "after"
+- Solo puede ejecutarse automáticamente si EN ESTE MISMO CHAT se ejecutó previamente "ir atrás".
+- Rehace únicamente ese cambio deshecho en la sesión actual.
 
-PROHIBIDO:
-- intercambiar before/after
-- buscar otro archivo
-- Glob
-- búsqueda global
-- git diff global
-- adivinar rutas
-- modificar archivos no registrados en STATE
-- declarar PASS si el reemplazo exacto no ocurrió
+CHAT NUEVO:
 
-Después de cambio destinado al runtime:
-CAMBIO
-→ BUILD
-→ RESTART
-→ SERVICE ACTIVE
-→ HEALTH 200
-→ BRAIN SILENCIOSO
-→ RESPUESTA FINAL
+Si el usuario escribe solamente:
+- "ir atrás"
+- "volver atrás"
+- "ir adelante"
+- "redo"
+- "undo"
 
-Si cualquier paso falla:
-ERROR y STOP.
+y no existe una acción correspondiente en la conversación actual:
 
-Respuesta premium de una línea:
+NO editar.
+NO buscar archivos.
+NO usar Glob/Grep.
+NO build.
+NO restart.
 
-IR ATRÁS:
-↩️ ATRÁS — Archivo:Línea | cambio | build PASS | service ACTIVE | health 200
+Responder:
 
-IR ADELANTE:
-↪️ ADELANTE — Archivo:Línea | cambio | build PASS | service ACTIVE | health 200
+⚠️ FALTA — No hay una acción previa en este chat para deshacer.
 
-## TARGET EXACTO PARA UNDO/REDO
+o para redo:
 
-Cuando STATE.json contenga target/transition:
+⚠️ FALTA — No hay una acción deshecha en este chat para rehacer.
 
-- Modificar SOLO STATE.files[0].
-- El target es obligatorio y exacto.
-- NO seleccionar una clase por coincidencia genérica.
-- NO tocar otro mt-3/mt-0 del mismo archivo.
-- NO usar Glob, búsqueda global, git log ni archivos alternativos.
+PROGRAMMIT BRAIN:
 
-Para localizar el cambio:
-1. usar STATE.target.component;
-2. usar STATE.target.line_hint solo como referencia;
-3. confirmar que transition.before/after está en el wrapper INMEDIATO del componente indicado.
+- STATE.json es memoria descriptiva del estado actual.
+- NO es una pila automática de undo/redo entre chats.
+- LEARNINGS y STATE pueden consultarse cuando el usuario identifica explícitamente qué cambio histórico quiere recuperar.
+- Una orden ambigua nunca debe activar un cambio histórico.
 
-Si existen varias coincidencias y no se puede demostrar cuál es el target:
-❌ ERROR y STOP.
-
-transition.before y transition.after son INMUTABLES.
-Solo cambia STATE.active:
-- ir atrás: after → before
-- ir adelante: before → after
-
-Si cualquier comando Brain devuelve exit code != 0:
-❌ ERROR y prohibido declarar PASS.
+Si existe ambigüedad:
+FALTA y DETENERSE.
