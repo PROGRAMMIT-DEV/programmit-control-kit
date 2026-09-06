@@ -23,6 +23,7 @@ CONFIDENCE_WEIGHT = 1000  # VERIFIED >> PROVISIONAL
 KIND_WEIGHT = 100         # DECISION > LEARNING > PREFERENCE > ERROR
 RELEVANCE_WEIGHT = 10     # Decide entre memorias del mismo Status y Tipo
 RECENCY_WEIGHT = 1        # Desempate menor
+CONFLICT_PENALTY = -20    # Penalización por REVIEW_REQUIRED
 
 # Pesos de Relevancia (relativos, sumados a RELEVANCE_WEIGHT)
 EXACT_MATCH_WEIGHT = 50
@@ -50,6 +51,7 @@ def db():
             verified INTEGER DEFAULT 0,
             status TEXT,
             date TEXT,
+            conflict_status TEXT,
             content TEXT NOT NULL,
             UNIQUE(kind, source_line)
         )
@@ -59,6 +61,7 @@ def db():
         con.execute("ALTER TABLE memories ADD COLUMN canonical_key TEXT")
         con.execute("ALTER TABLE memories ADD COLUMN status TEXT")
         con.execute("ALTER TABLE memories ADD COLUMN date TEXT")
+        con.execute("ALTER TABLE memories ADD COLUMN conflict_status TEXT")
     except sqlite3.OperationalError:
         pass
     return con
@@ -87,7 +90,7 @@ def reindex():
                 continue
 
             # Canonical Key V2.4
-            key = str(obj.get("canonicalKey") or obj.get("key") or "")
+            key = str(obj.get("canonical_key") or obj.get("key") or "")
             area = str(obj.get("area") or "")
             verified = 1 if obj.get("verified") is True or status == "VERIFIED" else 0
 
@@ -98,13 +101,14 @@ def reindex():
                     verified = 1
             
             date_str = str(obj.get("date") or "")
+            conflict_status = str(obj.get("conflict_status") or "")
             content = json.dumps(obj, ensure_ascii=False)
 
             con.execute("""
                 INSERT OR REPLACE INTO memories
-                (kind, source_line, canonical_key, area, verified, status, date, content)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (kind, n, key, area, verified, status, date_str, content))
+                (kind, source_line, canonical_key, area, verified, status, date, conflict_status, content)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (kind, n, key, area, verified, status, date_str, conflict_status, content))
 
     con.commit()
     con.close()
@@ -117,7 +121,7 @@ def terms(q):
     ]
 
 def calculate_score(row, query_terms):
-    kind, canonical_key, area, verified, status, date, content = row
+    kind, canonical_key, area, verified, status, date, conflict_status, content = row
     
     # 1. Confianza (Status)
     # VERIFIED = 1, PROVISIONAL = 0
@@ -138,12 +142,10 @@ def calculate_score(row, query_terms):
     q_str = " ".join(query_terms)
 
     # Coincidencia Exacta (Canonical Key)
-    # Si la query es exactamente la canonical key
     if q_str == c_key:
         score_relevance += EXACT_MATCH_WEIGHT
     
     # Coincidencia en Key (Token matching)
-    # Si tokens de la query aparecen en la key
     key_hits = sum(1 for t in query_terms if t in c_key)
     if key_hits > 0:
         score_relevance += (key_hits / len(query_terms)) * KEY_MATCH_WEIGHT
@@ -177,12 +179,12 @@ def calculate_score(row, query_terms):
             pass
 
     # Total: Jerarquía estricta
-    # 1. Confianza (1000*verified)
-    # 2. Tipo (100*prio)
-    # 3. Relevancia (10*rel) -> Desempate entre tipos iguales
-    # 4. Recencia (desempate menor)
     total = (score_confidence * CONFIDENCE_WEIGHT) + (score_kind * KIND_WEIGHT) + (score_relevance * RELEVANCE_WEIGHT) + (score_recency * RECENCY_WEIGHT)
     
+    # Penalización por conflicto pendiente (V2.6)
+    if conflict_status == "REVIEW_REQUIRED":
+        total += CONFLICT_PENALTY
+
     return total
 
 def search(query, limit, debug=False):
@@ -190,9 +192,8 @@ def search(query, limit, debug=False):
         reindex()
 
     con = db()
-    # Seleccionamos todos los campos necesarios
     rows = con.execute(
-        "SELECT kind, canonical_key, area, verified, status, date, content FROM memories"
+        "SELECT kind, canonical_key, area, verified, status, date, conflict_status, content FROM memories"
     ).fetchall()
     con.close()
 
@@ -203,11 +204,9 @@ def search(query, limit, debug=False):
     scored = []
 
     for row in rows:
-        kind, canonical_key, area, verified, status, date, content = row
+        kind, canonical_key, area, verified, status, date, conflict_status, content = row
         
-        # Exigir al menos alguna coincidencia real (OPTIMIZACIÓN)
-        # Si no hay coincidencia en contenido, clave o area, no tiene sentido puntuar alto
-        # Pero mantenemos la regla: "Una memoria que no tenga ninguna coincidencia real NO debe aparecer"
+        # Exigir al menos alguna coincidencia real
         haystack = f"{canonical_key} {area} {content}".lower()
         if not any(t in haystack for t in qs):
             continue

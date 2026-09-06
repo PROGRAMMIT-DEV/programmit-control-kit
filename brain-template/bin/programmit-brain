@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Programmit Brain V2.4 — canonical keys + deduplication.
+Programmit Brain V2.6 — canonical keys + deduplication + contradiction detection.
 
 Key normalization (deterministic):
   trim → lowercase → spaces/underscores → single dots → strip leading/trailing dots
@@ -13,6 +13,14 @@ Deduplication rules (learning, decision, preference — NOT errors):
   - if same kind + canonical key but value changes and new is VERIFIED → old→OBSOLETE, create new
   - PROVISIONAL can never make a VERIFIED OBSOLETE
   - historical lines are never deleted
+
+Conflict Detection (V2.6):
+  - Detects potential contradictions between different keys (same topic).
+  - Only compares against active VERIFIED learning/decision memories.
+  - Uses similarity scoring based on file, area, and key tokens.
+  - Threshold >= 0.75.
+  - Mark new memory as REVIEW_REQUIRED with conflicts_with list.
+  - Never auto-obsoletes based on this.
 """
 
 import argparse
@@ -33,31 +41,95 @@ FILES = {
 }
 
 DEDUP_KINDS = {"learning", "decision", "preference"}
+CONFLICT_KINDS = {"learning", "decision"}
 
+# Normalization constants for similarity
+STOP_WORDS = {
+    "a", "an", "the", "and", "or", "but", "if", "then", "else", "when",
+    "at", "by", "for", "in", "of", "to", "from", "as", "is", "it", "be",
+    "this", "that", "with", "on", "up", "out", "do", "no", "not", "so",
+    "page", "file", "service", "app", "component", "function", "var", "const", "let"
+}
 
 def now():
     return datetime.now(timezone.utc).isoformat()
 
 
 def canonical_key(key: str) -> str:
-    """Deterministic normalization of memory keys.
-
-    Examples:
-        "Seller Inventory ManageInventory Top_Spacing"
-        → "seller.inventory.manageinventory.top.spacing"
-        "seller_inventory_top_spacing"
-        → "seller.inventory.top.spacing"
-    """
+    """Deterministic normalization of memory keys."""
     s = key.strip().lower()
-    # spaces and underscores → dot
     s = re.sub(r"[\s_]+", ".", s)
-    # collapse multiple dots
     s = re.sub(r"\.+", ".", s)
-    # strip leading/trailing dots
     s = s.strip(".")
-    # keep only [a-z0-9.-]
     s = re.sub(r"[^a-z0-9\-.]", "", s)
     return s
+
+def tokenize(text: str) -> set:
+    """Tokenize text for similarity comparison."""
+    if not text:
+        return set()
+    s = text.lower()
+    # Replace dots/slashes/underscores with space
+    s = re.sub(r"[./_\-]+", " ", s)
+    tokens = set(re.findall(r"[a-z0-9]{2,}", s))
+    return tokens - STOP_WORDS
+
+def similarity_score(obj_a: dict, obj_b: dict) -> float:
+    """
+    Calculate similarity score between two memories (0.0 - 1.0).
+    Focuses on structural similarity (file, area) and key tokens.
+    """
+    score = 0.0
+    weight_sum = 0.0
+
+    # 1. File Match (High weight)
+    weight = 40.0
+    weight_sum += weight
+    file_a = obj_a.get("file") or ""
+    file_b = obj_b.get("file") or ""
+    if file_a and file_b:
+        if file_a == file_b:
+            score += weight
+        elif file_a.split("/")[-1] == file_b.split("/")[-1]: # Same filename
+            score += weight * 0.5
+
+    # 2. Area Match (High weight)
+    weight = 30.0
+    weight_sum += weight
+    area_a = obj_a.get("area") or ""
+    area_b = obj_b.get("area") or ""
+    if area_a and area_b:
+        # Normalize area for comparison
+        norm_a = canonical_key(area_a)
+        norm_b = canonical_key(area_b)
+        if norm_a == norm_b:
+            score += weight
+        elif norm_a.startswith(norm_b) or norm_b.startswith(norm_a):
+            score += weight * 0.5
+
+    # 3. Key Tokens Overlap (High weight)
+    weight = 30.0
+    weight_sum += weight
+    key_a = obj_a.get("canonical_key") or canonical_key(obj_a.get("key", ""))
+    key_b = obj_b.get("canonical_key") or canonical_key(obj_b.get("key", ""))
+    
+    tokens_a = tokenize(key_a)
+    tokens_b = tokenize(key_b)
+    
+    if tokens_a and tokens_b:
+        intersection = tokens_a.intersection(tokens_b)
+        union = tokens_a.union(tokens_b)
+        # Jaccard similarity for keys
+        jaccard = len(intersection) / len(union) if union else 0
+        score += weight * jaccard
+
+    # Normalize to 0-1
+    if weight_sum > 0:
+        final_score = score / weight_sum
+    else:
+        final_score = 0.0
+
+    return final_score
 
 def load_state():
     if not STATE.exists():
@@ -83,7 +155,6 @@ def cmd_state_get(args):
             print(value)
         return
 
-    # Resumen mínimo, nunca dump completo.
     print(
         f"area={state.get('area')} | "
         f"previous={state.get('previous_state')} | "
@@ -167,6 +238,7 @@ def cmd_append(args):
     status = "VERIFIED" if args.verified else "PROVISIONAL"
     new_canonical = canonical_key(args.key)
     use_dedup = args.kind in DEDUP_KINDS
+    use_conflict = args.kind in CONFLICT_KINDS and args.verified
 
     record = {
         "type": args.kind,
@@ -184,6 +256,7 @@ def cmd_append(args):
 
     lines = []
     duplicate = False
+    conflicts = []
 
     if path.exists():
         for raw in path.read_text(errors="ignore").splitlines():
@@ -228,6 +301,28 @@ def cmd_append(args):
                     )
                     obj["superseded_at"] = timestamp
                     obj["superseded_by"] = args.key
+            
+            # Conflict Detection (V2.6)
+            if use_conflict:
+                obj_status = str(obj.get("status") or "").upper()
+                obj_kind = obj.get("type") or ""
+                
+                # Compare against active VERIFIED learning/decision
+                if (
+                    active
+                    and obj_status == "VERIFIED"
+                    and obj_kind in CONFLICT_KINDS
+                    and obj_ck != new_canonical
+                ):
+                    sim = similarity_score(record, obj)
+                    if sim >= 0.75:
+                        conflicts.append({
+                            "kind": obj_kind,
+                            "key": obj.get("key", ""),
+                            "area": obj.get("area", ""),
+                            "file": obj.get("file", ""),
+                            "similarity": round(sim, 4)
+                        })
 
             # Migrate: add canonical_key to legacy entries
             if use_dedup and "canonical_key" not in obj:
@@ -237,6 +332,10 @@ def cmd_append(args):
 
     # Append new record unless it's an exact duplicate
     if not duplicate:
+        if conflicts:
+            record["conflict_status"] = "REVIEW_REQUIRED"
+            record["conflicts_with"] = conflicts
+        
         lines.append(json.dumps(record, ensure_ascii=False))
 
     tmp = path.with_suffix(path.suffix + ".tmp")
@@ -290,6 +389,103 @@ def cmd_recall(args):
         except Exception:
             continue
 
+def cmd_conflicts(args):
+    """List active REVIEW_REQUIRED conflicts."""
+    found_any = False
+    
+    for kind in CONFLICT_KINDS:
+        path = FILES.get(kind)
+        if not path or not path.exists():
+            continue
+            
+        for raw in path.read_text(errors="ignore").splitlines():
+            if not raw.strip():
+                continue
+            try:
+                obj = json.loads(raw)
+                status = str(obj.get("status") or "").upper()
+                conflict = obj.get("conflict_status")
+                
+                if status == "VERIFIED" and conflict == "REVIEW_REQUIRED":
+                    found_any = True
+                    print(json.dumps({
+                        "kind": kind,
+                        "key": obj.get("key"),
+                        "canonical_key": obj.get("canonical_key"),
+                        "conflicts_with": obj.get("conflicts_with", [])
+                    }, ensure_ascii=False))
+            except Exception:
+                continue
+                
+    sys.exit(0 if not found_any else 0) # Exit 0 regardless, but output if found
+
+def cmd_resolve_conflict(args):
+    """Resolve conflict between winner and loser keys."""
+    winner_key = canonical_key(args.winner)
+    loser_key = canonical_key(args.loser)
+    
+    timestamp = now()
+    winner_found = False
+    loser_found = False
+    
+    # Process files
+    for kind, path in FILES.items():
+        if not path.exists():
+            continue
+            
+        lines = []
+        modified = False
+        
+        for raw in path.read_text(errors="ignore").splitlines():
+            if not raw.strip():
+                lines.append(raw)
+                continue
+                
+            try:
+                obj = json.loads(raw)
+            except Exception:
+                lines.append(raw)
+                continue
+                
+            obj_ck = obj.get("canonical_key") or canonical_key(obj.get("key", ""))
+            status = str(obj.get("status") or "").upper()
+            
+            if obj_ck == winner_key and status == "VERIFIED":
+                winner_found = True
+                # Clean up conflict status if present
+                if obj.get("conflict_status") == "REVIEW_REQUIRED":
+                    obj.pop("conflict_status", None)
+                    obj.pop("conflicts_with", None)
+                    modified = True
+                    
+            elif obj_ck == loser_key and status == "VERIFIED":
+                loser_found = True
+                # Mark as OBSOLETE
+                obj["status"] = "OBSOLETE"
+                obj["obsolete_reason"] = "Superseded after conflict review."
+                obj["obsolete_at"] = timestamp
+                modified = True
+                
+            lines.append(json.dumps(obj, ensure_ascii=False))
+            
+        if modified:
+            tmp = path.with_suffix(path.suffix + ".tmp")
+            tmp.write_text("\n".join(lines) + ("\n" if lines else ""))
+            tmp.replace(path)
+            
+    if not winner_found:
+        print(f"ERROR: Winner key '{args.winner}' not found or not VERIFIED", file=sys.stderr)
+        sys.exit(1)
+        
+    if not loser_found:
+        print(f"ERROR: Loser key '{args.loser}' not found or not VERIFIED", file=sys.stderr)
+        sys.exit(1)
+        
+    # Invalidate index
+    index = BRAIN / "memory-index.sqlite"
+    if index.exists():
+        index.unlink()
+
 def main():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -321,7 +517,7 @@ def main():
     redo.add_argument("--to", dest="to_state", required=True)
     redo.add_argument("--result", default="PASS")
     redo.add_argument("--runtime", default="")
-    redo.set_defaults(func=cmd_redo)
+    undo.set_defaults(func=cmd_redo)
 
     app = sub.add_parser("append")
     app.add_argument(
@@ -342,6 +538,15 @@ def main():
     )
     recall.add_argument("query")
     recall.set_defaults(func=cmd_recall)
+
+    # V2.6 Commands
+    conf = sub.add_parser("conflicts")
+    conf.set_defaults(func=cmd_conflicts)
+
+    res = sub.add_parser("resolve-conflict")
+    res.add_argument("--winner", required=True)
+    res.add_argument("--loser", required=True)
+    res.set_defaults(func=cmd_resolve_conflict)
 
     args = parser.parse_args()
     args.func(args)
