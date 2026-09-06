@@ -1,6 +1,7 @@
 ---
 description: Agente rápido para bugs y cambios pequeños. Ejecución directa, cero narración, cero ciclos.
 mode: primary
+color: "#22d3ee"
 steps: 6
 permission:
   edit: allow
