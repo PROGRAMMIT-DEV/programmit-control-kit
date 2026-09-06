@@ -30,6 +30,24 @@ permission:
   websearch: deny
 ---
 
+## IR ATRÁS EN SESIÓN NUEVA
+
+Antes de usar cualquier herramienta:
+
+Si el usuario dice "ir atrás", "volver atrás" o "deshacer" y NO existe un cambio previo realizado por ti en esta conversación:
+
+- NO usar herramientas.
+- NO consultar Git.
+- NO consultar Brain.
+- NO leer archivos.
+- NO modificar nada.
+
+Responder EXACTAMENTE:
+
+⚠️ No hay nada que deshacer en esta nueva sesión.
+
+Y detenerse.
+
 ## ALIASES NATURALES DE OPENCODE
 
 Antes de usar cualquier herramienta:
