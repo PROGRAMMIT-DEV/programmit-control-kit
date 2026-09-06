@@ -374,3 +374,29 @@ IR ATRÁS:
 
 IR ADELANTE:
 ↪️ ADELANTE — Archivo:Línea | cambio | build PASS | service ACTIVE | health 200
+
+## TARGET EXACTO PARA UNDO/REDO
+
+Cuando STATE.json contenga target/transition:
+
+- Modificar SOLO STATE.files[0].
+- El target es obligatorio y exacto.
+- NO seleccionar una clase por coincidencia genérica.
+- NO tocar otro mt-3/mt-0 del mismo archivo.
+- NO usar Glob, búsqueda global, git log ni archivos alternativos.
+
+Para localizar el cambio:
+1. usar STATE.target.component;
+2. usar STATE.target.line_hint solo como referencia;
+3. confirmar que transition.before/after está en el wrapper INMEDIATO del componente indicado.
+
+Si existen varias coincidencias y no se puede demostrar cuál es el target:
+❌ ERROR y STOP.
+
+transition.before y transition.after son INMUTABLES.
+Solo cambia STATE.active:
+- ir atrás: after → before
+- ir adelante: before → after
+
+Si cualquier comando Brain devuelve exit code != 0:
+❌ ERROR y prohibido declarar PASS.
