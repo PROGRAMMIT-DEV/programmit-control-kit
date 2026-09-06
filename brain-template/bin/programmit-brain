@@ -909,7 +909,15 @@ def cmd_health(args):
                 obj = json.loads(line)
                 if str(obj.get("status") or "").upper() == "ACTIVE" or \
                    (str(obj.get("status") or "").upper() == "VERIFIED"):
-                    key = (kind, obj.get("canonical_key"))
+                    # Calculate canonical key: prefer obj['key'], fallback to obj['canonical_key']
+                    ck = obj.get("key") or obj.get("canonical_key") or ""
+                    if ck:
+                        ck = canonical_key(ck)
+                    else:
+                        # If no key/canonical_key, skip duplicate check
+                        continue
+                    
+                    key = (kind, ck)
                     active_keys[key] += 1
             except:
                 continue

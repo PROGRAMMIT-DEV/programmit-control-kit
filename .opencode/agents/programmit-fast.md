@@ -81,6 +81,12 @@ Cuando una tarea pueda beneficiarse de conocimiento previo del proyecto:
 
 ## CONTROL DE EJECUCIÓN
 
+Si `PROGRAMMIT_LOOP_GUARD` bloquea herramientas:
+- no intentar otra herramienta
+- responder en español:
+  ERROR concreto + resultado actual + qué falta
+- detenerse.
+
 Continuar trabajando mientras exista progreso real.
 
 Detenerse únicamente cuando:

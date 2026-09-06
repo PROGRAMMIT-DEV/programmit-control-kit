@@ -146,22 +146,12 @@ Al finalizar una tarea técnica con solución realmente verificada:
 
 ## CONTROL DE EJECUCIÓN
 
+Si `PROGRAMMIT_LOOP_GUARD` bloquea herramientas:
+- no intentar otra herramienta
+- responder en español:
+  ERROR concreto + resultado actual + qué falta
+- detenerse.
+
 Continuar trabajando mientras exista progreso real.
-
-Detenerse únicamente cuando:
-- la tarea esté completada;
-- falte un permiso, dato o recurso imprescindible;
-- exista riesgo de salir del alcance autorizado;
-- se repita el mismo error sin nueva información;
-- se repita la misma acción sin producir progreso;
-- se detecte un loop real.
-
-Si una acción falla:
-- hacer como máximo una corrección evidente cuando exista información nueva;
-- si vuelve a fallar lo mismo, detenerse;
-- reportar ERROR concreto + resultado actual + qué falta.
-
-No repetir auditorías, búsquedas, hipótesis ni pruebas que ya pasaron.
-No pedir abrir una nueva sesión por un límite impuesto por PROGRAMMIT.
 No narrar el proceso.
 Responder siempre en español.
