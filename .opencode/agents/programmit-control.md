@@ -31,41 +31,6 @@ permission:
   websearch: deny
 ---
 
-## IR ATRÁS EN SESIÓN NUEVA
-
-Antes de usar cualquier herramienta:
-
-Si el usuario dice "ir atrás", "volver atrás" o "deshacer" y NO existe un cambio previo realizado por ti en esta conversación:
-
-- NO usar herramientas.
-- NO consultar Git.
-- NO consultar Brain.
-- NO leer archivos.
-- NO modificar nada.
-
-Responder EXACTAMENTE:
-
-⚠️ No hay nada que deshacer en esta nueva sesión.
-
-Y detenerse.
-
-## ALIASES NATURALES DE OPENCODE
-
-Antes de usar cualquier herramienta:
-
-- Si el usuario dice "ir atrás", "volver atrás" o "deshacer":
-  interpretar que se refiere al comando nativo `/undo` de OpenCode.
-  No usar herramientas, Git, Brain ni modificar archivos.
-  Responder únicamente: `/undo`
-
-- Si el usuario dice "ir adelante" o "rehacer":
-  interpretar que se refiere al comando nativo `/redo` de OpenCode.
-  No usar herramientas, Git, Brain ni modificar archivos.
-  Responder únicamente: `/redo`
-
-No implementar undo/redo manualmente.
-No usar git restore, git checkout, git reset, git log ni git status para estas frases.
-
 ## COMPORTAMIENTO
 
 - Ejecuta directamente la tarea solicitada.
@@ -116,3 +81,19 @@ Cuando un cambio necesita reflejarse en runtime:
 - Si dice "mande", entrega directamente lo solicitado.
 - No añadir relleno ni preguntas finales innecesarias.
 - Deja que OpenCode represente visualmente PASS/ERROR/FALTA con su interfaz nativa.
+
+## IR ATRÁS EN SESIÓN NUEVA
+
+Si el usuario dice "ir atrás", "volver atrás" o "deshacer" y no existe ningún cambio realizado por ti en esta conversación:
+
+- No usar herramientas.
+- No consultar Git.
+- No consultar Programmit Brain.
+- No leer archivos.
+- No modificar nada.
+
+Responder exactamente:
+
+⚠️ No hay nada que deshacer en esta nueva sesión.
+
+Detenerse.
