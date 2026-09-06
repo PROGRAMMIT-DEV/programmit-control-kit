@@ -58,11 +58,28 @@ BRAIN_DIR="$PROJECT_DIR/.programmit"
 mkdir -p "$BRAIN_DIR"
 
 if [ -d "$BRAIN_TEMPLATE" ]; then
+    # FIRST: Handle SKILL_CANDIDATES.jsonl preservation
+    if [ -f "$BRAIN_TEMPLATE/SKILL_CANDIDATES.jsonl" ]; then
+        if [ -f "$BRAIN_DIR/SKILL_CANDIDATES.jsonl" ]; then
+            echo "   = SKILL_CANDIDATES.jsonl preservado"
+            # Do not copy if exists
+        else
+            cp "$BRAIN_TEMPLATE/SKILL_CANDIDATES.jsonl" "$BRAIN_DIR/"
+            echo "   + SKILL_CANDIDATES.jsonl"
+        fi
+    fi
+
+    # SECOND: Handle other files
     for SRC in "$BRAIN_TEMPLATE"/*; do
         [ -e "$SRC" ] || continue
 
         NAME="$(basename "$SRC")"
         DST="$BRAIN_DIR/$NAME"
+
+        # Skip SKILL_CANDIDATES as handled
+        if [ "$NAME" == "SKILL_CANDIDATES.jsonl" ]; then
+            continue
+        fi
 
         # La memoria existente del proyecto es canónica:
         # crear SOLO archivos faltantes, nunca sobrescribir.
