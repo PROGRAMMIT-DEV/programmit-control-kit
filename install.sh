@@ -49,6 +49,34 @@ if [ -f "$KIT_DIR/PROGRAMMIT_POLICY.md" ]; then
     cp "$KIT_DIR/PROGRAMMIT_POLICY.md" "$PROJECT_DIR/.opencode/"
 fi
 
+
+# PROGRAMMIT BRAIN INSTALL
+echo "🧠 Instalando Programmit Brain..."
+BRAIN_TEMPLATE="$KIT_DIR/brain-template"
+BRAIN_DIR="$PROJECT_DIR/.programmit"
+
+mkdir -p "$BRAIN_DIR"
+
+if [ -d "$BRAIN_TEMPLATE" ]; then
+    for SRC in "$BRAIN_TEMPLATE"/*; do
+        [ -e "$SRC" ] || continue
+
+        NAME="$(basename "$SRC")"
+        DST="$BRAIN_DIR/$NAME"
+
+        # La memoria existente del proyecto es canónica:
+        # crear SOLO archivos faltantes, nunca sobrescribir.
+        if [ ! -e "$DST" ]; then
+            cp "$SRC" "$DST"
+            echo "   + $NAME"
+        else
+            echo "   = $NAME preservado"
+        fi
+    done
+fi
+# END PROGRAMMIT BRAIN INSTALL
+
+
 # Merge seguro de configuración
 CONFIG_FILE="opencode.json"
 if [ -f "$KIT_DIR/$CONFIG_FILE" ]; then

@@ -155,3 +155,86 @@ Cuando el usuario diga "ir adelante", "rehacer", "redo", "volver a aplicar" o eq
 
 Si no existe un estado funcional previamente deshecho:
 reporta NADA QUE REHACER y DETENTE.
+
+## PROGRAMMIT BRAIN — MEMORIA PERSISTENTE
+
+Cada proyecto puede contener `.programmit/` como memoria persistente.
+
+Archivos:
+- PROJECT.md → conocimiento comprobado del proyecto
+- LEARNINGS.jsonl → soluciones verificadas
+- DECISIONS.jsonl → decisiones explícitas/canónicas
+- ERRORS.jsonl → errores comprobados y cómo evitarlos
+- USER_PREFERENCES.jsonl → preferencias explícitas del usuario
+- RESPONSE_STYLE.md → estilo de respuesta
+- STATE.json → último estado funcional para undo/redo
+
+### AL INICIAR
+
+- Lee `.programmit/RESPONSE_STYLE.md` si existe.
+- Lee `.programmit/PROJECT.md` solo cuando sea relevante.
+- NO leas todos los JSONL completos.
+- Busca únicamente recuerdos relacionados con la tarea mediante palabras clave.
+- Máximo una búsqueda de memoria por tipo relevante.
+
+### APRENDIZAJE
+
+Guardar conocimiento permanente SOLO cuando esté comprobado.
+
+LEARNINGS:
+Guardar únicamente después de:
+CAUSA demostrada + CAMBIO aplicado + VERIFICACIÓN funcional.
+
+Nunca guardar una hipótesis como verdad.
+
+DECISIONS:
+Guardar decisiones explícitas del usuario o decisiones técnicas ya confirmadas como canónicas.
+
+ERRORS:
+Guardar errores reales que hayan sido comprobados, especialmente:
+- causa falsa
+- cambio incorrecto
+- error de runtime
+- solución que provocó regresión
+
+USER_PREFERENCES:
+Si el usuario expresa explícitamente una preferencia permanente de trabajo o respuesta, registrarla.
+Las preferencias puntuales no deben convertirse automáticamente en reglas permanentes.
+
+### ESTILO
+
+Respeta `.programmit/RESPONSE_STYLE.md`.
+
+Una consulta sencilla debe recibir una respuesta sencilla.
+No convertir respuestas pequeñas en reportes largos.
+
+### STATE / UNDO / REDO
+
+Después de un cambio FUNCIONAL verificado:
+actualiza `.programmit/STATE.json` con:
+- archivo(s)
+- estado anterior
+- estado nuevo
+- runtime aplicado
+- comando/verificación utilizada
+
+"ir atrás":
+usar STATE.json para recuperar el último estado funcional anterior, incluso en una sesión nueva cuando sea seguro.
+
+"ir adelante":
+rehacer el último estado funcional deshecho registrado.
+
+Nunca usar STATE para revertir cambios ajenos al agente.
+
+### SEGURIDAD
+
+Nunca guardar:
+- API keys
+- tokens
+- passwords
+- cookies
+- secretos
+- datos sensibles
+
+La memoria del proyecto puede evolucionar.
+La configuración `.opencode`, agentes y políticas NO deben auto-modificarse.
