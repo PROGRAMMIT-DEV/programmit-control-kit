@@ -123,6 +123,8 @@ def cmd_redo(args):
 
 def cmd_append(args):
     path = FILES[args.kind]
+    timestamp = now()
+    status = "VERIFIED" if args.verified else "PROVISIONAL"
 
     record = {
         "type": args.kind,
@@ -130,14 +132,70 @@ def cmd_append(args):
         "key": args.key,
         "value": args.value,
         "verified": args.verified,
-        "date": now(),
+        "status": status,
+        "date": timestamp,
     }
 
     if args.file:
         record["file"] = args.file
 
-    with path.open("a") as f:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    lines = []
+    duplicate = False
+
+    if path.exists():
+        for raw in path.read_text(errors="ignore").splitlines():
+            if not raw.strip():
+                continue
+
+            try:
+                obj = json.loads(raw)
+            except Exception:
+                lines.append(raw)
+                continue
+
+            same_key = obj.get("key") == args.key
+            active = str(obj.get("status") or "").upper() != "OBSOLETE"
+
+            if same_key and active:
+                same_value = (
+                    obj.get("value") == args.value
+                    and obj.get("area") == args.area
+                    and obj.get("file") == args.file
+                )
+
+                if same_value:
+                    duplicate = True
+
+                    if args.verified:
+                        obj["verified"] = True
+                        obj["status"] = "VERIFIED"
+                        obj["verified_at"] = timestamp
+
+                elif args.verified and args.kind in {
+                    "learning",
+                    "decision",
+                    "preference",
+                }:
+                    obj["status"] = "OBSOLETE"
+                    obj["obsolete_reason"] = (
+                        "Superseded by newer VERIFIED memory with same key"
+                    )
+                    obj["superseded_at"] = timestamp
+                    obj["superseded_by"] = args.key
+
+            lines.append(json.dumps(obj, ensure_ascii=False))
+
+    if not duplicate:
+        lines.append(json.dumps(record, ensure_ascii=False))
+
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text("\n".join(lines) + ("\n" if lines else ""))
+    tmp.replace(path)
+
+    # Invalida índice para que la siguiente búsqueda vea la memoria nueva.
+    index = BRAIN / "memory-index.sqlite"
+    if index.exists():
+        index.unlink()
 
 def cmd_recall(args):
     path = FILES[args.kind]
