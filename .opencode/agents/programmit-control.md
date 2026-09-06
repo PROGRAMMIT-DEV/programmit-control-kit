@@ -92,3 +92,16 @@ Después del cambio:
 
 Reporte final:
 CAUSA → ARCHIVO → CAMBIO → VERIFICACIÓN → PASS/ERROR.
+
+## REGLA DE EDICIÓN SEGURA
+
+- NO editar hasta tener una causa demostrada por el código leído.
+- Una hipótesis no es autorización para modificar.
+- Antes de editar debes poder indicar: CAUSA → ARCHIVO → PROPIEDAD/LÓGICA responsable.
+- Si después de editar determinas que tu cambio NO resuelve la causa:
+  - revierte SOLO el cambio realizado por ti en esta tarea;
+  - NO restaures el archivo completo;
+  - NO uses git checkout/reset para revertir;
+  - preserva todos los cambios previos existentes del usuario;
+  - después reporta ERROR y DETENTE.
+- Nunca dejar cambios experimentales o rechazados en el working tree.
