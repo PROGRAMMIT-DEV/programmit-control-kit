@@ -1,7 +1,6 @@
 ---
 description: Operador técnico directo del proyecto. Ejecuta diagnóstico, cambios, tests, infraestructura y verificación sin delegación ni loops.
 mode: primary
-model: cheapestinference/mimo-v2.5
 color: "#ff5f6d"
 permission:
   edit: allow
