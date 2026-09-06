@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import sys
+from pathlib import Path
+from datetime import datetime, timezone
+
+BRAIN = Path(__file__).resolve().parent.parent
+STATE = BRAIN / "STATE.json"
+
+FILES = {
+    "learning": BRAIN / "LEARNINGS.jsonl",
+    "error": BRAIN / "ERRORS.jsonl",
+    "decision": BRAIN / "DECISIONS.jsonl",
+    "preference": BRAIN / "USER_PREFERENCES.jsonl",
+}
+
+def now():
+    return datetime.now(timezone.utc).isoformat()
+
+def load_state():
+    if not STATE.exists():
+        return {}
+    try:
+        return json.loads(STATE.read_text())
+    except Exception:
+        raise SystemExit("ERROR: STATE.json inválido")
+
+def save_state(data):
+    STATE.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+    )
+
+def cmd_state_get(args):
+    state = load_state()
+
+    if args.field:
+        value = state.get(args.field)
+        if isinstance(value, (dict, list)):
+            print(json.dumps(value, ensure_ascii=False))
+        elif value is not None:
+            print(value)
+        return
+
+    # Resumen mínimo, nunca dump completo.
+    print(
+        f"area={state.get('area')} | "
+        f"previous={state.get('previous_state')} | "
+        f"current={state.get('current_state')}"
+    )
+
+def cmd_state_set(args):
+    state = load_state()
+
+    if args.area is not None:
+        state["area"] = args.area
+
+    if args.file:
+        state["files"] = args.file
+
+    if args.previous is not None:
+        state["previous_state"] = args.previous
+
+    if args.current is not None:
+        state["current_state"] = args.current
+
+    runtime = state.get("runtime") or {}
+    verification = state.get("verification") or {}
+
+    state["runtime"] = runtime
+    state["verification"] = verification
+
+    if args.build:
+        runtime["build"] = args.build
+        verification["build"] = args.build
+
+    if args.service:
+        runtime["service"] = args.service
+        verification["service"] = args.service
+
+    if args.health:
+        verification["health"] = args.health
+
+    if args.ui:
+        runtime["ui"] = args.ui
+        verification["ui"] = args.ui
+
+    state["updated_at"] = now()
+    save_state(state)
+
+def cmd_undo(args):
+    state = load_state()
+
+    state["previous_state"] = args.from_state
+    state["current_state"] = args.to_state
+    state["last_undo"] = {
+        "from": args.from_state,
+        "to": args.to_state,
+        "result": args.result,
+        "runtime": args.runtime,
+        "at": now(),
+    }
+    state["updated_at"] = now()
+
+    save_state(state)
+
+def cmd_redo(args):
+    state = load_state()
+
+    state["previous_state"] = args.from_state
+    state["current_state"] = args.to_state
+    state["last_redo"] = {
+        "from": args.from_state,
+        "to": args.to_state,
+        "result": args.result,
+        "runtime": args.runtime,
+        "at": now(),
+    }
+    state["updated_at"] = now()
+
+    save_state(state)
+
+def cmd_append(args):
+    path = FILES[args.kind]
+
+    record = {
+        "type": args.kind,
+        "area": args.area,
+        "key": args.key,
+        "value": args.value,
+        "verified": args.verified,
+        "date": now(),
+    }
+
+    if args.file:
+        record["file"] = args.file
+
+    with path.open("a") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+def cmd_recall(args):
+    path = FILES[args.kind]
+
+    if not path.exists():
+        return
+
+    words = [
+        w.lower()
+        for w in args.query.split()
+        if len(w) >= 3
+    ]
+
+    matches = []
+
+    for raw in path.read_text().splitlines():
+        if not raw.strip():
+            continue
+
+        low = raw.lower()
+        score = sum(1 for w in words if w in low)
+
+        if score:
+            matches.append((score, raw))
+
+    matches.sort(key=lambda x: x[0], reverse=True)
+
+    # Máximo 3 recuerdos relevantes.
+    for _, raw in matches[:3]:
+        try:
+            obj = json.loads(raw)
+            print(json.dumps(obj, ensure_ascii=False))
+        except Exception:
+            continue
+
+def main():
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    get = sub.add_parser("state-get")
+    get.add_argument("--field")
+    get.set_defaults(func=cmd_state_get)
+
+    st = sub.add_parser("state-set")
+    st.add_argument("--area")
+    st.add_argument("--file", action="append")
+    st.add_argument("--previous")
+    st.add_argument("--current")
+    st.add_argument("--build")
+    st.add_argument("--service")
+    st.add_argument("--health")
+    st.add_argument("--ui")
+    st.set_defaults(func=cmd_state_set)
+
+    undo = sub.add_parser("undo")
+    undo.add_argument("--from", dest="from_state", required=True)
+    undo.add_argument("--to", dest="to_state", required=True)
+    undo.add_argument("--result", default="PASS")
+    undo.add_argument("--runtime", default="")
+    undo.set_defaults(func=cmd_undo)
+
+    redo = sub.add_parser("redo")
+    redo.add_argument("--from", dest="from_state", required=True)
+    redo.add_argument("--to", dest="to_state", required=True)
+    redo.add_argument("--result", default="PASS")
+    redo.add_argument("--runtime", default="")
+    redo.set_defaults(func=cmd_redo)
+
+    app = sub.add_parser("append")
+    app.add_argument(
+        "kind",
+        choices=["learning", "error", "decision", "preference"]
+    )
+    app.add_argument("--area")
+    app.add_argument("--key", required=True)
+    app.add_argument("--value", required=True)
+    app.add_argument("--file")
+    app.add_argument("--verified", action="store_true")
+    app.set_defaults(func=cmd_append)
+
+    recall = sub.add_parser("recall")
+    recall.add_argument(
+        "kind",
+        choices=["learning", "error", "decision", "preference"]
+    )
+    recall.add_argument("query")
+    recall.set_defaults(func=cmd_recall)
+
+    args = parser.parse_args()
+    args.func(args)
+
+if __name__ == "__main__":
+    main()

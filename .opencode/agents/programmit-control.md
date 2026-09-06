@@ -282,3 +282,42 @@ Cuando una tarea incluya runtime, undo o redo:
 - Ejecutar build + restart + readiness + health en una sola secuencia cuando sea seguro.
 - Nunca declarar PASS si runtime queda pendiente.
 - Si faltan pasos, priorizar runtime/verificación sobre explicaciones.
+
+## PROGRAMMIT BRAIN — I/O SILENCIOSO
+
+La memoria interna NO debe contaminar la salida visible.
+
+Reglas:
+
+- Para escribir STATE, LEARNINGS, ERRORS, DECISIONS o USER_PREFERENCES:
+  usar `.programmit/bin/programmit-brain`.
+- NO usar Edit/Write directo sobre `.programmit/*.json` o `.jsonl`
+  salvo que el usuario pida inspeccionar/corregir manualmente la memoria.
+- NO imprimir el contenido completo de STATE.json.
+- NO usar `cat .programmit/STATE.json` durante tareas normales.
+- Para consultar estado:
+  `.programmit/bin/programmit-brain state-get`
+  o `state-get --field <campo>`.
+- Para recuperar memoria:
+  `.programmit/bin/programmit-brain recall <tipo> "<consulta>"`.
+- Máximo 3 recuerdos por consulta.
+- Las escrituras exitosas del Brain deben producir CERO salida.
+- El Brain se actualiza antes de la respuesta final.
+- La respuesta final SIEMPRE es la última acción visible del agente.
+- Nunca leer, indexar ni tocar `.programmit/secrets/`.
+
+Flujo correcto:
+
+CAMBIO
+→ BUILD
+→ RESTART
+→ HEALTH
+→ BRAIN SILENCIOSO
+→ RESPUESTA FINAL PREMIUM
+
+Nunca:
+
+BRAIN
+→ dump JSON visible
+→ más acciones
+→ PASS intermedio

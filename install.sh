@@ -67,9 +67,16 @@ if [ -d "$BRAIN_TEMPLATE" ]; then
         # La memoria existente del proyecto es canónica:
         # crear SOLO archivos faltantes, nunca sobrescribir.
         if [ ! -e "$DST" ]; then
-            cp "$SRC" "$DST"
+            if [ -d "$SRC" ]; then
+                cp -r "$SRC" "$DST"
+            else
+                cp "$SRC" "$DST"
+            fi
             echo "   + $NAME"
         else
+            if [ -d "$SRC" ] && [ -d "$DST" ]; then
+                cp -rn "$SRC/." "$DST/"
+            fi
             echo "   = $NAME preservado"
         fi
     done
