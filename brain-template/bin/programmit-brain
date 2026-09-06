@@ -1,7 +1,23 @@
 #!/usr/bin/env python3
 
+"""
+Programmit Brain V2.4 — canonical keys + deduplication.
+
+Key normalization (deterministic):
+  trim → lowercase → spaces/underscores → single dots → strip leading/trailing dots
+  → keep only [a-z0-9.-]
+
+Deduplication rules (learning, decision, preference — NOT errors):
+  - same kind + same canonical key + same value + same area + same file → no new line
+  - if new is VERIFIED and existing identical is PROVISIONAL → upgrade to VERIFIED
+  - if same kind + canonical key but value changes and new is VERIFIED → old→OBSOLETE, create new
+  - PROVISIONAL can never make a VERIFIED OBSOLETE
+  - historical lines are never deleted
+"""
+
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from datetime import datetime, timezone
@@ -16,8 +32,32 @@ FILES = {
     "preference": BRAIN / "USER_PREFERENCES.jsonl",
 }
 
+DEDUP_KINDS = {"learning", "decision", "preference"}
+
+
 def now():
     return datetime.now(timezone.utc).isoformat()
+
+
+def canonical_key(key: str) -> str:
+    """Deterministic normalization of memory keys.
+
+    Examples:
+        "Seller Inventory ManageInventory Top_Spacing"
+        → "seller.inventory.manageinventory.top.spacing"
+        "seller_inventory_top_spacing"
+        → "seller.inventory.top.spacing"
+    """
+    s = key.strip().lower()
+    # spaces and underscores → dot
+    s = re.sub(r"[\s_]+", ".", s)
+    # collapse multiple dots
+    s = re.sub(r"\.+", ".", s)
+    # strip leading/trailing dots
+    s = s.strip(".")
+    # keep only [a-z0-9.-]
+    s = re.sub(r"[^a-z0-9\-.]", "", s)
+    return s
 
 def load_state():
     if not STATE.exists():
@@ -125,11 +165,14 @@ def cmd_append(args):
     path = FILES[args.kind]
     timestamp = now()
     status = "VERIFIED" if args.verified else "PROVISIONAL"
+    new_canonical = canonical_key(args.key)
+    use_dedup = args.kind in DEDUP_KINDS
 
     record = {
         "type": args.kind,
         "area": args.area,
         "key": args.key,
+        "canonical_key": new_canonical,
         "value": args.value,
         "verified": args.verified,
         "status": status,
@@ -153,10 +196,16 @@ def cmd_append(args):
                 lines.append(raw)
                 continue
 
-            same_key = obj.get("key") == args.key
+            # errors: no dedup, append as-is
+            if not use_dedup:
+                lines.append(json.dumps(obj, ensure_ascii=False))
+                continue
+
+            # Compute canonical key for legacy entries missing it
+            obj_ck = obj.get("canonical_key") or canonical_key(obj.get("key", ""))
             active = str(obj.get("status") or "").upper() != "OBSOLETE"
 
-            if same_key and active:
+            if active and obj_ck == new_canonical:
                 same_value = (
                     obj.get("value") == args.value
                     and obj.get("area") == args.area
@@ -164,27 +213,29 @@ def cmd_append(args):
                 )
 
                 if same_value:
+                    # Identical memory exists → no duplicate
                     duplicate = True
-
-                    if args.verified:
+                    # Upgrade PROVISIONAL → VERIFIED if new is VERIFIED
+                    if args.verified and obj.get("status") != "VERIFIED":
                         obj["verified"] = True
                         obj["status"] = "VERIFIED"
                         obj["verified_at"] = timestamp
-
-                elif args.verified and args.kind in {
-                    "learning",
-                    "decision",
-                    "preference",
-                }:
+                elif args.verified:
+                    # Value changed + new is VERIFIED → old becomes OBSOLETE
                     obj["status"] = "OBSOLETE"
                     obj["obsolete_reason"] = (
-                        "Superseded by newer VERIFIED memory with same key"
+                        "Superseded by newer VERIFIED memory with same canonical key"
                     )
                     obj["superseded_at"] = timestamp
                     obj["superseded_by"] = args.key
 
+            # Migrate: add canonical_key to legacy entries
+            if use_dedup and "canonical_key" not in obj:
+                obj["canonical_key"] = obj_ck
+
             lines.append(json.dumps(obj, ensure_ascii=False))
 
+    # Append new record unless it's an exact duplicate
     if not duplicate:
         lines.append(json.dumps(record, ensure_ascii=False))
 
@@ -214,6 +265,14 @@ def cmd_recall(args):
     for raw in path.read_text().splitlines():
         if not raw.strip():
             continue
+
+        # Skip OBSOLETE memories in search results
+        try:
+            obj_check = json.loads(raw)
+            if str(obj_check.get("status") or "").upper() == "OBSOLETE":
+                continue
+        except Exception:
+            pass
 
         low = raw.lower()
         score = sum(1 for w in words if w in low)
