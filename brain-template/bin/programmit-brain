@@ -746,7 +746,10 @@ def cmd_consolidate(args):
                 continue
     
     # Check all sources found
-    found_keys = {obj.get("canonical_key") for obj in source_objs}
+    found_keys = {
+        canonical_key(obj.get("key") or "")
+        for obj in source_objs
+    }
     for sk in args.source_key:
         if canonical_key(sk) not in found_keys:
             print(f"ERROR: Source key '{sk}' not found", file=sys.stderr)
