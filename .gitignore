@@ -1,7 +1,28 @@
+# Secrets / environment
 .env
 .env.*
+*.key
+*.pem
+*.p12
+
+# Dependencies
+node_modules/
+
+# Runtime / live PROGRAMMIT memory
+.programmit/
+memory-index.sqlite
+*.sqlite
+*.db
+
+# Python runtime
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs / backups
+*.log
 *.bak
 *.backup
-*.log
+
+# OS
 .DS_Store
-node_modules/

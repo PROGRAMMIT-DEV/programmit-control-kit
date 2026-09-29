@@ -1,0 +1,666 @@
+#!/usr/bin/env python3
+
+import argparse
+import datetime as dt
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
+
+
+BASE = Path.home() / ".programmit"
+PROJECTS = BASE / "projects"
+
+ALLOWED_CATEGORIES = {
+    "architecture",
+    "command",
+    "decision",
+    "convention",
+    "debugging",
+    "workflow",
+    "dependency",
+    "auth",
+    "runtime",
+    "resolution",
+    "result",
+    "other",
+}
+
+CATEGORY_ORDER = [
+    "architecture",
+    "auth",
+    "runtime",
+    "dependency",
+    "command",
+    "workflow",
+    "convention",
+    "decision",
+    "debugging",
+    "resolution",
+    "result",
+    "other",
+]
+
+SECRET_PATTERNS = [
+    re.compile(r"\bsk-[A-Za-z0-9_-]{12,}"),
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}"),
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    re.compile(r"Bearer\s+[A-Za-z0-9._~-]{10,}", re.I),
+    re.compile(r"-----BEGIN .*PRIVATE KEY-----", re.I),
+    re.compile(
+        r"(password|passwd|api[_ -]?key|secret|access[_ -]?token)"
+        r"\s*[:=]\s*\S+",
+        re.I,
+    ),
+]
+
+BLOCKED_SOURCE_PARTS = {
+    ".env",
+    "secret",
+    "secrets",
+    "credential",
+    "credentials",
+    "private-key",
+    "private_key",
+}
+
+
+def run(cmd, cwd=None):
+    try:
+        return subprocess.check_output(
+            cmd,
+            cwd=cwd,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except Exception:
+        return ""
+
+
+def project_root(path):
+    p = Path(path).expanduser().resolve()
+
+    root = run(
+        ["git", "-C", str(p), "rev-parse", "--show-toplevel"]
+    )
+
+    if root:
+        return Path(root).resolve()
+
+    return p
+
+
+def sanitize_remote(remote):
+    remote = (remote or "").strip()
+
+    if not remote:
+        return ""
+
+    if remote.startswith(("http://", "https://")):
+        try:
+            parts = urlsplit(remote)
+
+            host = parts.hostname or ""
+            port = f":{parts.port}" if parts.port else ""
+
+            return urlunsplit(
+                (
+                    parts.scheme,
+                    host + port,
+                    parts.path,
+                    "",
+                    "",
+                )
+            )
+        except Exception:
+            return ""
+
+    # git@github.com:owner/repo.git style has no credential payload.
+    if re.match(r"^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:", remote):
+        return remote
+
+    # Local remotes are not persisted as identifiers.
+    return ""
+
+
+def slugify(value):
+    value = value.strip().lower()
+    value = re.sub(r"\.git$", "", value)
+    value = re.sub(r"[^a-z0-9._-]+", "-", value)
+    value = value.strip("-._")
+
+    return value or "project"
+
+
+def project_identity(path):
+    root = project_root(path)
+
+    remote = sanitize_remote(
+        run(["git", "-C", str(root), "remote", "get-url", "origin"])
+    )
+
+    if remote:
+        identity = "git:" + remote
+        name = remote.rstrip("/").split("/")[-1].split(":")[-1]
+    else:
+        identity = "path:" + str(root)
+        name = root.name
+
+    digest = hashlib.sha256(identity.encode()).hexdigest()[:12]
+    slug = slugify(name)
+
+    directory = PROJECTS / f"{slug}-{digest}"
+
+    return root, slug, digest, directory
+
+
+def facts_path(directory):
+    return directory / "FACTS.jsonl"
+
+
+def memory_path(directory):
+    return directory / "MEMORY.md"
+
+
+def now():
+    return dt.datetime.now(dt.timezone.utc).replace(
+        microsecond=0
+    ).isoformat()
+
+
+def contains_secret(value):
+    value = str(value)
+
+    return any(p.search(value) for p in SECRET_PATTERNS)
+
+
+def blocked_source(source):
+    if not source:
+        return False
+
+    low = source.lower()
+
+    return any(part in low for part in BLOCKED_SOURCE_PARTS)
+
+
+def load_events(directory):
+    path = facts_path(directory)
+
+    if not path.exists():
+        return []
+
+    events = []
+
+    for raw in path.read_text(errors="replace").splitlines():
+        raw = raw.strip()
+
+        if not raw:
+            continue
+
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            continue
+
+        if isinstance(obj, dict):
+            events.append(obj)
+
+    return events
+
+
+def latest_facts(directory):
+    latest = {}
+
+    for event in load_events(directory):
+        key = event.get("key")
+
+        if not key:
+            continue
+
+        latest[key] = event
+
+    return latest
+
+
+def append_fact(
+    directory,
+    category,
+    key,
+    value,
+    source="",
+    automatic=False,
+):
+    category = category.strip().lower()
+    key = key.strip()
+    value = " ".join(str(value).split())
+    source = str(source or "").strip()
+
+    if category not in ALLOWED_CATEGORIES:
+        raise ValueError(
+            f"categoría inválida: {category}"
+        )
+
+    if not key or len(key) > 120:
+        raise ValueError(
+            "key debe tener entre 1 y 120 caracteres"
+        )
+
+    if not value or len(value) > 700:
+        raise ValueError(
+            "value debe tener entre 1 y 700 caracteres"
+        )
+
+    if len(source) > 300:
+        raise ValueError(
+            "source demasiado largo"
+        )
+
+    if contains_secret(key) or contains_secret(value):
+        raise ValueError(
+            "contenido rechazado: parece contener un secreto"
+        )
+
+    if blocked_source(source):
+        raise ValueError(
+            "source rechazado: ruta sensible"
+        )
+
+    directory.mkdir(parents=True, exist_ok=True)
+
+    existing = latest_facts(directory).get(key)
+
+    # Exact duplicate: do not grow the memory.
+    if (
+        existing
+        and existing.get("value") == value
+        and existing.get("category") == category
+    ):
+        return False
+
+    event = {
+        "timestamp": now(),
+        "category": category,
+        "key": key,
+        "value": value,
+        "source": source,
+        "automatic": bool(automatic),
+        "verified": True,
+    }
+
+    with facts_path(directory).open("a", encoding="utf-8") as fh:
+        fh.write(
+            json.dumps(
+                event,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            + "\n"
+        )
+
+    return True
+
+
+def detect_project(root):
+    detected = []
+
+    package = root / "package.json"
+
+    manager = None
+
+    if (root / "pnpm-lock.yaml").exists():
+        manager = "pnpm"
+    elif (root / "yarn.lock").exists():
+        manager = "yarn"
+    elif (root / "bun.lock").exists() or (root / "bun.lockb").exists():
+        manager = "bun"
+    elif (root / "package-lock.json").exists():
+        manager = "npm"
+
+    if manager:
+        detected.append(
+            (
+                "dependency",
+                "project.package_manager",
+                manager,
+                "auto:init",
+            )
+        )
+
+    if package.exists():
+        try:
+            obj = json.loads(package.read_text())
+        except Exception:
+            obj = {}
+
+        name = obj.get("name")
+
+        if isinstance(name, str) and name:
+            detected.append(
+                (
+                    "architecture",
+                    "project.name",
+                    name[:200],
+                    "package.json",
+                )
+            )
+
+        deps = {}
+
+        for group in ("dependencies", "devDependencies"):
+            value = obj.get(group, {})
+
+            if isinstance(value, dict):
+                deps.update(value)
+
+        framework_keys = {
+            "next": "Next.js",
+            "react": "React",
+            "vue": "Vue",
+            "nuxt": "Nuxt",
+            "svelte": "Svelte",
+            "@prisma/client": "Prisma",
+            "next-auth": "NextAuth",
+            "typescript": "TypeScript",
+        }
+
+        found = []
+
+        for dependency, label in framework_keys.items():
+            if dependency in deps:
+                found.append(label)
+
+        if found:
+            detected.append(
+                (
+                    "architecture",
+                    "project.stack",
+                    ", ".join(sorted(set(found))),
+                    "package.json",
+                )
+            )
+
+        scripts = obj.get("scripts", {})
+
+        if isinstance(scripts, dict) and manager:
+            runner = {
+                "npm": "npm run",
+                "pnpm": "pnpm",
+                "yarn": "yarn",
+                "bun": "bun run",
+            }[manager]
+
+            for script in (
+                "build",
+                "test",
+                "lint",
+                "typecheck",
+                "verify",
+            ):
+                if script in scripts:
+                    detected.append(
+                        (
+                            "command",
+                            f"command.{script}",
+                            f"{runner} {script}",
+                            "package.json",
+                        )
+                    )
+
+    markers = [
+        ("pyproject.toml", "Python"),
+        ("requirements.txt", "Python"),
+        ("Cargo.toml", "Rust"),
+        ("go.mod", "Go"),
+        ("composer.json", "PHP"),
+    ]
+
+    languages = []
+
+    for filename, language in markers:
+        if (root / filename).exists():
+            languages.append(language)
+
+    if languages:
+        detected.append(
+            (
+                "architecture",
+                "project.languages",
+                ", ".join(sorted(set(languages))),
+                "auto:init",
+            )
+        )
+
+    return detected
+
+
+def rebuild_memory(root, slug, digest, directory):
+    latest = latest_facts(directory)
+
+    # Most recent unique facts only.
+    facts = list(latest.values())
+    facts.sort(
+        key=lambda x: x.get("timestamp", ""),
+        reverse=True,
+    )
+    facts = facts[:100]
+
+    groups = {}
+
+    for fact in facts:
+        groups.setdefault(
+            fact.get("category", "other"),
+            [],
+        ).append(fact)
+
+    lines = [
+        "# PROGRAMMIT AUTO MEMORY",
+        "",
+        f"Project: {slug}",
+        f"Project ID: {digest}",
+        f"Root: {root}",
+        "",
+        "Memoria verificada reutilizable.",
+        "No es autorización para acciones destructivas o de producción.",
+        "",
+    ]
+
+    labels = {
+        "architecture": "Arquitectura",
+        "auth": "Autenticación",
+        "runtime": "Runtime",
+        "dependency": "Dependencias",
+        "command": "Comandos",
+        "workflow": "Workflows",
+        "convention": "Convenciones",
+        "decision": "Decisiones",
+        "debugging": "Debugging",
+        "resolution": "Resoluciones verificadas",
+        "result": "Resultados verificados",
+        "other": "Otros",
+    }
+
+    for category in CATEGORY_ORDER:
+        items = groups.get(category, [])
+
+        if not items:
+            continue
+
+        lines.extend(
+            [
+                f"## {labels.get(category, category)}",
+                "",
+            ]
+        )
+
+        for item in sorted(
+            items,
+            key=lambda x: x.get("key", ""),
+        ):
+            value = item.get("value", "")
+            key = item.get("key", "")
+            source = item.get("source", "")
+
+            line = f"- **{key}**: {value}"
+
+            if source:
+                line += f" _(fuente: {source})_"
+
+            lines.append(line)
+
+        lines.append("")
+
+    # Hard cap to avoid memory context growing forever.
+    lines = lines[:140]
+
+    memory_path(directory).write_text(
+        "\n".join(lines).rstrip() + "\n",
+        encoding="utf-8",
+    )
+
+
+def ensure_project(path):
+    PROJECTS.mkdir(parents=True, exist_ok=True)
+
+    root, slug, digest, directory = project_identity(path)
+
+    directory.mkdir(parents=True, exist_ok=True)
+
+    facts_path(directory).touch(exist_ok=True)
+
+    existing = latest_facts(directory)
+
+    for category, key, value, source in detect_project(root):
+        if key not in existing:
+            try:
+                append_fact(
+                    directory,
+                    category,
+                    key,
+                    value,
+                    source,
+                    automatic=True,
+                )
+            except ValueError:
+                pass
+
+    rebuild_memory(
+        root,
+        slug,
+        digest,
+        directory,
+    )
+
+    return root, slug, digest, directory
+
+
+def cmd_init(args):
+    root, slug, digest, directory = ensure_project(args.path)
+
+    print(f"PROJECT | {slug}")
+    print(f"ID      | {digest}")
+    print(f"MEMORY  | {memory_path(directory)}")
+    print("STATUS  | READY")
+
+
+def cmd_context(args):
+    _, _, _, directory = ensure_project(args.path)
+
+    text = memory_path(directory).read_text(errors="replace")
+
+    print(text.rstrip())
+
+
+def cmd_status(args):
+    root, slug, digest, directory = ensure_project(args.path)
+
+    latest = latest_facts(directory)
+
+    print(f"PROJECT | {slug}")
+    print(f"ID      | {digest}")
+    print(f"ROOT    | {root}")
+    print(f"DIR     | {directory}")
+    print(f"FACTS   | {len(latest)}")
+    print(f"MEMORY  | {memory_path(directory)}")
+
+
+def cmd_learn(args):
+    root, slug, digest, directory = ensure_project(args.path)
+
+    try:
+        changed = append_fact(
+            directory,
+            args.category,
+            args.key,
+            args.value,
+            args.source,
+            automatic=False,
+        )
+    except ValueError as exc:
+        print(f"RECHAZADO | {exc}", file=sys.stderr)
+        raise SystemExit(2)
+
+    rebuild_memory(
+        root,
+        slug,
+        digest,
+        directory,
+    )
+
+    print(
+        "LEARNED |"
+        if changed
+        else "UNCHANGED |",
+        args.key,
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="PROGRAMMIT Auto Memory"
+    )
+
+    sub = parser.add_subparsers(
+        dest="command",
+        required=True,
+    )
+
+    for name, handler in (
+        ("init", cmd_init),
+        ("context", cmd_context),
+        ("status", cmd_status),
+    ):
+        p = sub.add_parser(name)
+        p.add_argument(
+            "path",
+            nargs="?",
+            default=os.getcwd(),
+        )
+        p.set_defaults(func=handler)
+
+    p = sub.add_parser("learn")
+    p.add_argument(
+        "category",
+        choices=sorted(ALLOWED_CATEGORIES),
+    )
+    p.add_argument("key")
+    p.add_argument("value")
+    p.add_argument(
+        "--source",
+        default="",
+    )
+    p.add_argument(
+        "--path",
+        default=os.getcwd(),
+    )
+    p.set_defaults(func=cmd_learn)
+
+    args = parser.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,153 +1,174 @@
-#!/bin/bash
-
-# Programmit Control Kit Installer
-# Uso: ./install.sh /ruta/proyecto
-
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
 KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="${1:-.}"
 
-if [ ! -d "$PROJECT_DIR" ]; then
-    echo "❌ Error: Directorio del proyecto no existe: $PROJECT_DIR"
-    exit 1
-fi
+usage() {
+  cat <<'TXT'
+Programmit Control Kit
 
-echo "🔧 Instalando Programmit Control Kit en: $PROJECT_DIR"
+Uso:
 
-# Crear backup si existe configuración OpenCode
-BACKUP_DIR=""
-if [ -d "$PROJECT_DIR/.opencode" ]; then
+  ./install.sh --global
+      Instala Programmit-Control globalmente para el usuario actual.
+
+  ./install.sh /ruta/proyecto
+      Instala la configuración portable dentro de un proyecto.
+
+  ./install.sh .
+      Instala en el proyecto actual.
+TXT
+}
+
+backup_file() {
+  local src="$1"
+
+  if [ -e "$src" ]; then
+    local backup="${src}.backup.$(date +%Y%m%d_%H%M%S)"
+    cp -a "$src" "$backup"
+    echo "Backup: $backup"
+  fi
+}
+
+install_global() {
+  local HOME_DIR="${HOME:?HOME no definido}"
+
+  local OC_DIR="$HOME_DIR/.config/opencode"
+  local AGENT_DIR="$OC_DIR/agents"
+  local PLUGIN_DIR="$OC_DIR/plugins"
+  local PROGRAMMIT_DIR="$HOME_DIR/.programmit"
+  local BIN_DIR="$PROGRAMMIT_DIR/bin"
+
+  echo "Instalando Programmit Control Kit globalmente"
+  echo "HOME: $HOME_DIR"
+
+  mkdir -p "$AGENT_DIR"
+  mkdir -p "$PLUGIN_DIR"
+  mkdir -p "$BIN_DIR"
+
+  chmod 700 "$PROGRAMMIT_DIR" || true
+  chmod 700 "$BIN_DIR" || true
+
+  if [ -f "$AGENT_DIR/programmit-control.md" ]; then
+    backup_file "$AGENT_DIR/programmit-control.md"
+  fi
+
+  if [ -f "$PLUGIN_DIR/programmit-auto-memory.ts" ]; then
+    backup_file "$PLUGIN_DIR/programmit-auto-memory.ts"
+  fi
+
+  if [ -f "$BIN_DIR/programmit-auto-memory" ]; then
+    backup_file "$BIN_DIR/programmit-auto-memory"
+  fi
+
+  cp \
+    "$KIT_DIR/.opencode/agents/programmit-control.md" \
+    "$AGENT_DIR/programmit-control.md"
+
+  if [ -f "$KIT_DIR/.opencode/agents/programmit-fast.md" ]; then
+    cp \
+      "$KIT_DIR/.opencode/agents/programmit-fast.md" \
+      "$AGENT_DIR/programmit-fast.md"
+  fi
+
+  cp \
+    "$KIT_DIR/.opencode/plugins/programmit-auto-memory.ts" \
+    "$PLUGIN_DIR/programmit-auto-memory.ts"
+
+  cp \
+    "$KIT_DIR/brain-template/bin/programmit-auto-memory" \
+    "$BIN_DIR/programmit-auto-memory"
+
+  chmod 600 "$AGENT_DIR/programmit-control.md"
+  chmod 600 "$PLUGIN_DIR/programmit-auto-memory.ts"
+  chmod 700 "$BIN_DIR/programmit-auto-memory"
+
+  echo
+  echo "Instalación global completada."
+  echo
+  echo "Agente:"
+  echo "  $AGENT_DIR/programmit-control.md"
+  echo
+  echo "Plugin:"
+  echo "  $PLUGIN_DIR/programmit-auto-memory.ts"
+  echo
+  echo "Motor:"
+  echo "  $BIN_DIR/programmit-auto-memory"
+}
+
+install_project() {
+  local PROJECT_DIR="$1"
+
+  PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
+
+  echo "Instalando Programmit Control Kit en:"
+  echo "  $PROJECT_DIR"
+
+  mkdir -p "$PROJECT_DIR/.opencode/agents"
+
+  if [ -d "$PROJECT_DIR/.opencode" ]; then
+    local BACKUP_DIR
     BACKUP_DIR="$PROJECT_DIR/.opencode.backup.$(date +%Y%m%d_%H%M%S)"
-    echo "📦 Respaldando configuración existente en: $BACKUP_DIR"
-    cp -r "$PROJECT_DIR/.opencode" "$BACKUP_DIR"
-fi
 
-# Crear directorios objetivo
-mkdir -p "$PROJECT_DIR/.opencode/agents"
-mkdir -p "$PROJECT_DIR/.opencode/skills"
+    cp -a "$PROJECT_DIR/.opencode" "$BACKUP_DIR"
+    echo "Backup: $BACKUP_DIR"
+  fi
 
-# Copiar agentes
-echo "📋 Copiando agentes..."
-cp -r "$KIT_DIR/.opencode/agents/"* "$PROJECT_DIR/.opencode/agents/"
+  cp \
+    "$KIT_DIR/.opencode/agents/programmit-control.md" \
+    "$PROJECT_DIR/.opencode/agents/programmit-control.md"
 
-# Copiar skills
-echo "📋 Copiando skills..."
-if [ -d "$KIT_DIR/skills" ] && [ -n "$(find "$KIT_DIR/skills" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
-  cp -r "$KIT_DIR/skills/." "$PROJECT_DIR/.opencode/skills/"
-fi
+  if [ -f "$KIT_DIR/.opencode/agents/programmit-fast.md" ]; then
+    cp \
+      "$KIT_DIR/.opencode/agents/programmit-fast.md" \
+      "$PROJECT_DIR/.opencode/agents/programmit-fast.md"
+  fi
 
-# Copiar KNOWLEDGE.md
-if [ -f "$KIT_DIR/KNOWLEDGE.md" ]; then
-    echo "📋 Copiando KNOWLEDGE.md..."
-    cp "$KIT_DIR/KNOWLEDGE.md" "$PROJECT_DIR/.opencode/"
-fi
+  if [ -f "$KIT_DIR/KNOWLEDGE.md" ]; then
+    cp "$KIT_DIR/KNOWLEDGE.md" "$PROJECT_DIR/.opencode/KNOWLEDGE.md"
+  fi
 
-# Copiar PROGRAMMIT_POLICY.md
-if [ -f "$KIT_DIR/PROGRAMMIT_POLICY.md" ]; then
-    echo "📋 Copiando PROGRAMMIT_POLICY.md..."
-    cp "$KIT_DIR/PROGRAMMIT_POLICY.md" "$PROJECT_DIR/.opencode/"
-fi
+  if [ -f "$KIT_DIR/PROGRAMMIT_POLICY.md" ]; then
+    cp \
+      "$KIT_DIR/PROGRAMMIT_POLICY.md" \
+      "$PROJECT_DIR/.opencode/PROGRAMMIT_POLICY.md"
+  fi
 
+  # Instalar Programmit Brain por proyecto sin sobrescribir memoria existente
+  local BRAIN_DIR="$PROJECT_DIR/.programmit"
+  mkdir -p "$BRAIN_DIR"
 
-# PROGRAMMIT BRAIN INSTALL
-echo "🧠 Instalando Programmit Brain..."
-BRAIN_TEMPLATE="$KIT_DIR/brain-template"
-BRAIN_DIR="$PROJECT_DIR/.programmit"
+  if [ -d "$KIT_DIR/brain-template" ]; then
+    cp -rn "$KIT_DIR/brain-template/." "$BRAIN_DIR/"
+    echo "Programmit Brain preparado en: $BRAIN_DIR"
+  fi
 
-mkdir -p "$BRAIN_DIR"
-
-if [ -d "$BRAIN_TEMPLATE" ]; then
-    for SRC in "$BRAIN_TEMPLATE"/*; do
-        [ -e "$SRC" ] || continue
-
-        NAME="$(basename "$SRC")"
-        DST="$BRAIN_DIR/$NAME"
-
-        # La memoria existente del proyecto es canónica:
-        # crear SOLO archivos faltantes, nunca sobrescribir.
-        if [ ! -e "$DST" ]; then
-            if [ -d "$SRC" ]; then
-                cp -r "$SRC" "$DST"
-            else
-                cp "$SRC" "$DST"
-            fi
-            echo "   + $NAME"
-        else
-            if [ -d "$SRC" ] && [ -d "$DST" ]; then
-                cp -rn "$SRC/." "$DST/"
-            fi
-            echo "   = $NAME preservado"
-        fi
-    done
-fi
-# END PROGRAMMIT BRAIN INSTALL
-
-
-# Merge seguro de configuración
-CONFIG_FILE="opencode.json"
-if [ -f "$KIT_DIR/$CONFIG_FILE" ]; then
-    echo "🔧 Fusionando configuración..."
-    
-    if [ -f "$PROJECT_DIR/$CONFIG_FILE" ]; then
-        # Backup del archivo existente
-        cp "$PROJECT_DIR/$CONFIG_FILE" "$PROJECT_DIR/$CONFIG_FILE.backup.$(date +%Y%m%d_%H%M%S)"
-        
-        # Usar Python para merge seguro
-        python3 << PYTHON_SCRIPT
-import json
-import sys
-
-def merge_configs(existing, kit):
-    """Fusiona configuraciones preservando el existente y aplicando el kit."""
-    result = existing.copy()
-    
-    # Preservar provider existente
-    if "provider" in existing:
-        result["provider"] = existing["provider"]
-    
-    # Aplicar/actualizar configuración portable del kit
-    if "permission" in kit:
-        result["permission"] = kit["permission"]
-
-    if "default_agent" in kit:
-        result["default_agent"] = kit["default_agent"]
-    
-    # Preservar otras claves top-level existentes
-    for key in existing:
-        if key not in result:
-            result[key] = existing[key]
-    
-    return result
-
-try:
-    with open("$PROJECT_DIR/$CONFIG_FILE", "r") as f:
-        existing = json.load(f)
-    
-    with open("$KIT_DIR/$CONFIG_FILE", "r") as f:
-        kit = json.load(f)
-    
-    merged = merge_configs(existing, kit)
-    
-    with open("$PROJECT_DIR/$CONFIG_FILE", "w") as f:
-        json.dump(merged, f, indent=2)
-    
-    print("✅ Configuración fusionada correctamente")
-except Exception as e:
-    print(f"❌ Error al fusionar configuración: {e}")
-    sys.exit(1)
-PYTHON_SCRIPT
+  if [ -f "$KIT_DIR/opencode.json" ]; then
+    if [ ! -f "$PROJECT_DIR/opencode.json" ]; then
+      cp "$KIT_DIR/opencode.json" "$PROJECT_DIR/opencode.json"
     else
-        # No existe, copiar directamente
-        cp "$KIT_DIR/$CONFIG_FILE" "$PROJECT_DIR/"
-        echo "📋 Configuración instalada (nueva)"
+      echo "opencode.json existente preservado."
     fi
-fi
+  fi
 
-echo "✅ Programmit Control Kit instalado exitosamente!"
-echo ""
-echo "📁 Componentes instalados:"
-echo "   - Agentes: $(ls "$PROJECT_DIR/.opencode/agents/" | wc -l) archivos"
-echo "   - Skills: $(find "$PROJECT_DIR/.opencode/skills" -mindepth 1 -maxdepth 1 | wc -l) directorios"
-echo ""
-echo "Para personalizar, edita archivos en: $PROJECT_DIR/.opencode/"
+  echo
+  echo "Instalación del proyecto completada."
+}
+
+case "${1:-}" in
+  --global)
+    install_global
+    ;;
+  -h|--help|"")
+    usage
+    exit 0
+    ;;
+  *)
+    if [ ! -d "$1" ]; then
+      echo "ERROR: directorio inexistente: $1" >&2
+      exit 1
+    fi
+
+    install_project "$1"
+    ;;
+esac
