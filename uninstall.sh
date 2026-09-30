@@ -11,7 +11,11 @@ rm -f \
   "$HOME_DIR/.config/opencode/agents/programmit-control.md" \
   "$HOME_DIR/.config/opencode/agents/programmit-fast.md" \
   "$HOME_DIR/.config/opencode/plugins/programmit-auto-memory.ts" \
-  "$HOME_DIR/.programmit/bin/programmit-auto-memory"
+  "$HOME_DIR/.programmit/bin/programmit-auto-memory" \
+  "$HOME_DIR/.programmit/bin/programmit-auto-memory.py" \
+  "$HOME_DIR/.programmit/bin/programmit-auto-memory.cmd" \
+  "$HOME_DIR/.programmit/bin/programmit-auto-memory.exe" \
+  "$HOME_DIR/.programmit/version"
 
 echo "Programmit Control Kit desinstalado."
 echo "Memoria preservada en: $HOME_DIR/.programmit/projects"
