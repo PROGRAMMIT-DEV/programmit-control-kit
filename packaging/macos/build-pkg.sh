@@ -15,7 +15,6 @@ BASE="/usr/local/share/programmit-control"
 mkdir -p \
   "$ROOTFS$BASE/agents" \
   "$ROOTFS$BASE/plugins" \
-  "$ROOTFS$BASE/bin" \
   "$SCRIPTS" \
   "$ROOT/dist"
 
@@ -31,14 +30,6 @@ cp \
   "$ROOT/.opencode/plugins/programmit-auto-memory.ts" \
   "$ROOTFS$BASE/plugins/"
 
-cp \
-  "$ROOT/brain-template/bin/programmit-auto-memory" \
-  "$ROOTFS$BASE/bin/programmit-auto-memory.py"
-
-cp \
-  "$ROOT/packaging/macos/programmit-auto-memory" \
-  "$ROOTFS$BASE/bin/programmit-auto-memory"
-
 cp "$ROOT/VERSION" "$ROOTFS$BASE/VERSION"
 
 cp \
@@ -46,7 +37,6 @@ cp \
   "$SCRIPTS/postinstall"
 
 chmod +x \
-  "$ROOTFS$BASE/bin/programmit-auto-memory" \
   "$SCRIPTS/postinstall"
 
 pkgbuild \
