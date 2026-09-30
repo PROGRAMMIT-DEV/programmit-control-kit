@@ -118,8 +118,7 @@ jobs:
         run: |
           chmod +x \
             packaging/macos/build-pkg.sh \
-            packaging/macos/postinstall \
-            packaging/macos/programmit-auto-memory
+            packaging/macos/postinstall
 
           packaging/macos/build-pkg.sh
 
