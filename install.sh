@@ -2,6 +2,14 @@
 set -euo pipefail
 
 KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VERSION_FILE="$KIT_DIR/VERSION"
+
+if [ ! -f "$VERSION_FILE" ]; then
+  echo "ERROR: falta archivo VERSION" >&2
+  exit 1
+fi
+
+VERSION="$(tr -d '[:space:]' < "$VERSION_FILE")"
 
 usage() {
   cat <<'TXT'
@@ -83,8 +91,12 @@ install_global() {
   chmod 600 "$PLUGIN_DIR/programmit-auto-memory.ts"
   chmod 700 "$BIN_DIR/programmit-auto-memory"
 
+  printf '%s\n' "$VERSION" > "$PROGRAMMIT_DIR/version"
+  chmod 600 "$PROGRAMMIT_DIR/version"
+
   echo
   echo "Instalación global completada."
+  echo "Versión: $VERSION"
   echo
   echo "Agente:"
   echo "  $AGENT_DIR/programmit-control.md"

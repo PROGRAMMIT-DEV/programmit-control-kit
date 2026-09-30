@@ -68,3 +68,11 @@ echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then
   exit 1
 fi
+
+echo
+echo "Versión PROGRAMMIT Control:"
+if [ -f "$HOME_DIR/.programmit/version" ]; then
+  cat "$HOME_DIR/.programmit/version"
+else
+  echo "FALTA archivo de versión"
+fi
