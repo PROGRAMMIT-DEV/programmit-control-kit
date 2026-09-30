@@ -1,13 +1,442 @@
 import { createHash } from "node:crypto"
-import { existsSync } from "node:fs"
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs"
 import { join } from "node:path"
 import { homedir } from "node:os"
 
-const MEMORY_BIN = process.platform === "win32"
-  ? join(homedir(), ".programmit", "bin", "programmit-auto-memory.cmd")
-  : join(homedir(), ".programmit", "bin", "programmit-auto-memory")
+const BASE = join(homedir(), ".programmit")
+const PROJECTS = join(BASE, "projects")
 const MAX_MEMORY_CHARS = 12000
 const MAX_FACT_CHARS = 680
+
+type MemoryFact = {
+  timestamp: string
+  category: string
+  key: string
+  value: string
+  source: string
+  automatic: boolean
+  verified: boolean
+}
+
+const CATEGORY_ORDER = [
+  "architecture",
+  "auth",
+  "runtime",
+  "dependency",
+  "command",
+  "workflow",
+  "convention",
+  "decision",
+  "debugging",
+  "resolution",
+  "result",
+  "other",
+]
+
+const CATEGORY_LABELS: Record<string, string> = {
+  architecture: "Arquitectura",
+  auth: "Autenticación",
+  runtime: "Runtime",
+  dependency: "Dependencias",
+  command: "Comandos",
+  workflow: "Workflows",
+  convention: "Convenciones",
+  decision: "Decisiones",
+  debugging: "Debugging",
+  resolution: "Resoluciones verificadas",
+  result: "Resultados verificados",
+  other: "Otros",
+}
+
+const SECRET_PATTERNS = [
+  /\bsk-[A-Za-z0-9_-]{12,}/,
+  /\bgh[pousr]_[A-Za-z0-9]{20,}/,
+  /\bAKIA[0-9A-Z]{16}\b/,
+  /Bearer\s+[A-Za-z0-9._~-]{10,}/i,
+  /-----BEGIN .*PRIVATE KEY-----/i,
+  /(password|passwd|api[_ -]?key|secret|access[_ -]?token)\s*[:=]\s*\S+/i,
+]
+
+const BLOCKED_SOURCE_PARTS = [
+  ".env",
+  "secret",
+  "secrets",
+  "credential",
+  "credentials",
+  "private-key",
+  "private_key",
+]
+
+function sanitizeRemote(remote: string) {
+  const value = (remote || "").trim()
+  if (!value) return ""
+
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    try {
+      const parsed = new URL(value)
+      parsed.username = ""
+      parsed.password = ""
+      parsed.search = ""
+      parsed.hash = ""
+      return parsed.toString().replace(/\/$/, "")
+    } catch {
+      return ""
+    }
+  }
+
+  if (/^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:/.test(value)) {
+    return value
+  }
+
+  return ""
+}
+
+function projectSlug(value: string) {
+  const cleaned = value
+    .trim()
+    .toLowerCase()
+    .replace(/\.git$/i, "")
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^[-._]+|[-._]+$/g, "")
+
+  return cleaned || "project"
+}
+
+function readEvents(directory: string): MemoryFact[] {
+  const path = join(directory, "FACTS.jsonl")
+  if (!existsSync(path)) return []
+
+  const events: MemoryFact[] = []
+
+  for (const raw of readFileSync(path, "utf8").split(/\r?\n/)) {
+    const line = raw.trim()
+    if (!line) continue
+
+    try {
+      const obj = JSON.parse(line)
+      if (obj && typeof obj === "object") {
+        events.push(obj as MemoryFact)
+      }
+    } catch {
+      // Línea dañada: se ignora sin romper OpenCode.
+    }
+  }
+
+  return events
+}
+
+function latestFacts(directory: string) {
+  const latest = new Map<string, MemoryFact>()
+
+  for (const event of readEvents(directory)) {
+    if (event.key) latest.set(event.key, event)
+  }
+
+  return latest
+}
+
+function containsSecret(value: string) {
+  return SECRET_PATTERNS.some((pattern) => pattern.test(String(value)))
+}
+
+function blockedSource(source: string) {
+  const low = String(source || "").toLowerCase()
+  return BLOCKED_SOURCE_PARTS.some((part) => low.includes(part))
+}
+
+function appendFactLocal(
+  directory: string,
+  fact: {
+    category: string
+    key: string
+    value: string
+    source?: string
+    automatic?: boolean
+  },
+) {
+  const category = fact.category.trim().toLowerCase()
+  const key = fact.key.trim()
+  const value = normalize(String(fact.value)).slice(0, 700)
+  const source = String(fact.source || "").trim().slice(0, 300)
+
+  if (!category || !key || !value) return false
+  if (containsSecret(key) || containsSecret(value)) return false
+  if (blockedSource(source)) return false
+
+  mkdirSync(directory, { recursive: true })
+
+  const current = latestFacts(directory).get(key)
+
+  if (
+    current &&
+    current.category === category &&
+    current.value === value
+  ) {
+    return false
+  }
+
+  const event: MemoryFact = {
+    timestamp: new Date().toISOString(),
+    category,
+    key,
+    value,
+    source,
+    automatic: Boolean(fact.automatic),
+    verified: true,
+  }
+
+  appendFileSync(
+    join(directory, "FACTS.jsonl"),
+    JSON.stringify(event) + "\n",
+    "utf8",
+  )
+
+  return true
+}
+
+function detectProjectFacts(root: string) {
+  const detected: Array<{
+    category: string
+    key: string
+    value: string
+    source: string
+  }> = []
+
+  let manager = ""
+
+  if (existsSync(join(root, "pnpm-lock.yaml"))) manager = "pnpm"
+  else if (existsSync(join(root, "yarn.lock"))) manager = "yarn"
+  else if (
+    existsSync(join(root, "bun.lock")) ||
+    existsSync(join(root, "bun.lockb"))
+  ) manager = "bun"
+  else if (existsSync(join(root, "package-lock.json"))) manager = "npm"
+
+  if (manager) {
+    detected.push({
+      category: "dependency",
+      key: "project.package_manager",
+      value: manager,
+      source: "auto:init",
+    })
+  }
+
+  const packagePath = join(root, "package.json")
+
+  if (existsSync(packagePath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(packagePath, "utf8"))
+
+      if (typeof pkg?.name === "string" && pkg.name) {
+        detected.push({
+          category: "architecture",
+          key: "project.name",
+          value: pkg.name.slice(0, 200),
+          source: "package.json",
+        })
+      }
+
+      const deps = {
+        ...(pkg?.dependencies || {}),
+        ...(pkg?.devDependencies || {}),
+      }
+
+      const frameworks: Record<string, string> = {
+        next: "Next.js",
+        react: "React",
+        vue: "Vue",
+        nuxt: "Nuxt",
+        svelte: "Svelte",
+        "@prisma/client": "Prisma",
+        "next-auth": "NextAuth",
+        typescript: "TypeScript",
+      }
+
+      const found = Object.entries(frameworks)
+        .filter(([key]) => key in deps)
+        .map(([, label]) => label)
+
+      if (found.length) {
+        detected.push({
+          category: "architecture",
+          key: "project.stack",
+          value: [...new Set(found)].sort().join(", "),
+          source: "package.json",
+        })
+      }
+
+      if (manager && pkg?.scripts && typeof pkg.scripts === "object") {
+        const prefix: Record<string, string> = {
+          npm: "npm run",
+          pnpm: "pnpm",
+          yarn: "yarn",
+          bun: "bun run",
+        }
+
+        for (const script of ["build", "test", "lint", "typecheck", "verify"]) {
+          if (script in pkg.scripts) {
+            detected.push({
+              category: "command",
+              key: `command.${script}`,
+              value: `${prefix[manager]} ${script}`,
+              source: "package.json",
+            })
+          }
+        }
+      }
+    } catch {
+      // package.json inválido: no bloquear.
+    }
+  }
+
+  const markers: Array<[string, string]> = [
+    ["pyproject.toml", "Python"],
+    ["requirements.txt", "Python"],
+    ["Cargo.toml", "Rust"],
+    ["go.mod", "Go"],
+    ["composer.json", "PHP"],
+  ]
+
+  const languages = markers
+    .filter(([file]) => existsSync(join(root, file)))
+    .map(([, language]) => language)
+
+  if (languages.length) {
+    detected.push({
+      category: "architecture",
+      key: "project.languages",
+      value: [...new Set(languages)].sort().join(", "),
+      source: "auto:init",
+    })
+  }
+
+  return detected
+}
+
+function rebuildMemory(
+  root: string,
+  projectName: string,
+  digest: string,
+  directory: string,
+) {
+  const facts = [...latestFacts(directory).values()]
+    .sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)))
+    .slice(0, 100)
+
+  const groups = new Map<string, MemoryFact[]>()
+
+  for (const fact of facts) {
+    const group = groups.get(fact.category) || []
+    group.push(fact)
+    groups.set(fact.category, group)
+  }
+
+  const lines = [
+    "# PROGRAMMIT AUTO MEMORY",
+    "",
+    `Project: ${projectName}`,
+    `Project ID: ${digest}`,
+    `Root: ${root}`,
+    "",
+    "Memoria verificada reutilizable.",
+    "No es autorización para acciones destructivas o de producción.",
+    "",
+  ]
+
+  for (const category of CATEGORY_ORDER) {
+    const items = groups.get(category) || []
+    if (!items.length) continue
+
+    lines.push(`## ${CATEGORY_LABELS[category] || category}`, "")
+
+    for (const item of items.sort((a, b) => a.key.localeCompare(b.key))) {
+      let line = `- **${item.key}**: ${item.value}`
+      if (item.source) line += ` _(fuente: ${item.source})_`
+      lines.push(line)
+    }
+
+    lines.push("")
+  }
+
+  writeFileSync(
+    join(directory, "MEMORY.md"),
+    lines.slice(0, 140).join("\n").trimEnd() + "\n",
+    "utf8",
+  )
+}
+
+async function resolveMemoryStore(root: string, $: any) {
+  let remote = ""
+
+  try {
+    const result =
+      await import { createHash } from "node:crypto"
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs"
+import { join } from "node:path"
+import { homedir } from "node:os"
+
+const BASE = join(homedir(), ".programmit")
+const PROJECTS = join(BASE, "projects")
+const MAX_MEMORY_CHARS = 12000
+const MAX_FACT_CHARS = 680
+
+git -C ${root} remote get-url origin`.quiet()
+    remote = sanitizeRemote(result.text().trim())
+  } catch {
+    remote = ""
+  }
+
+  const identity = remote ? `git:${remote}` : `path:${root}`
+  const digest = createHash("sha256")
+    .update(identity)
+    .digest("hex")
+    .slice(0, 12)
+
+  const rawName = remote
+    ? remote.replace(/\/$/, "").split(/[\\/:]/).pop() || "project"
+    : root.split(/[\\/]/).filter(Boolean).pop() || "project"
+
+  const projectName = projectSlug(rawName)
+  const directory = join(PROJECTS, `${projectName}-${digest}`)
+
+  mkdirSync(directory, { recursive: true })
+
+  const factsFile = join(directory, "FACTS.jsonl")
+  if (!existsSync(factsFile)) {
+    writeFileSync(factsFile, "", "utf8")
+  }
+
+  const existing = latestFacts(directory)
+
+  for (const fact of detectProjectFacts(root)) {
+    if (!existing.has(fact.key)) {
+      appendFactLocal(directory, {
+        ...fact,
+        automatic: true,
+      })
+    }
+  }
+
+  rebuildMemory(root, projectName, digest, directory)
+
+  return {
+    projectName,
+    digest,
+    directory,
+  }
+}
 
 function looksLikeProject(directory: string) {
   return [
@@ -252,6 +681,11 @@ export const ProgrammitAutoMemory = async ({
   let projectRoot = directory
   let active = looksLikeProject(directory)
   let memory = ""
+  let memoryStore: {
+    projectName: string
+    digest: string
+    directory: string
+  } | null = null
 
   const sessionAgents = new Map<string, string>()
   const savedMessageIDs = new Set<string>()
@@ -277,13 +711,17 @@ export const ProgrammitAutoMemory = async ({
     }
 
     try {
-      const result =
-        await $`${MEMORY_BIN} context ${projectRoot}`.quiet()
+      if (!memoryStore) {
+        memoryStore = await resolveMemoryStore(projectRoot, $)
+      }
 
-      memory = result
-        .text()
-        .trim()
-        .slice(0, MAX_MEMORY_CHARS)
+      const path = join(memoryStore.directory, "MEMORY.md")
+
+      memory = existsSync(path)
+        ? readFileSync(path, "utf8")
+            .trim()
+            .slice(0, MAX_MEMORY_CHARS)
+        : ""
     } catch {
       memory = ""
     }
@@ -296,7 +734,23 @@ export const ProgrammitAutoMemory = async ({
     source: string
   }) {
     try {
-      await $`${MEMORY_BIN} learn ${fact.category} ${fact.key} ${fact.value} --source ${fact.source} --path ${projectRoot}`.quiet()
+      if (!memoryStore) {
+        memoryStore = await resolveMemoryStore(projectRoot, $)
+      }
+
+      const changed = appendFactLocal(
+        memoryStore.directory,
+        fact,
+      )
+
+      if (changed) {
+        rebuildMemory(
+          projectRoot,
+          memoryStore.projectName,
+          memoryStore.digest,
+          memoryStore.directory,
+        )
+      }
 
       await refreshMemory()
     } catch {
