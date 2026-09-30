@@ -34,6 +34,22 @@ jobs:
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Validate plugin and installers
+        shell: bash
+        run: |
+          npm exec --yes --package esbuild -- \
+            esbuild .opencode/plugins/programmit-auto-memory.ts \
+            --platform=node \
+            --format=esm \
+            --outfile=/tmp/programmit-auto-memory.js
+
+          bash -n install.sh
+          bash -n verify.sh
+          bash -n uninstall.sh
+          bash -n packaging/linux/build-run.sh
+          bash -n packaging/macos/build-pkg.sh
+          bash -n packaging/macos/postinstall
+
 
   linux:
     needs: validate
