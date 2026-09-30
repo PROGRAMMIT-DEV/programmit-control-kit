@@ -33,7 +33,13 @@ Source: "{#RepoRoot}\.opencode\agents\programmit-control.md"; DestDir: "{%USERPR
 Source: "{#RepoRoot}\.opencode\agents\programmit-fast.md"; DestDir: "{%USERPROFILE}\.config\opencode\agents"; Flags: ignoreversion
 Source: "{#RepoRoot}\.opencode\plugins\programmit-auto-memory.ts"; DestDir: "{%USERPROFILE}\.config\opencode\plugins"; Flags: ignoreversion
 
-Source: "{#RepoRoot}\brain-template\bin\programmit-auto-memory"; DestDir: "{%USERPROFILE}\.programmit\bin"; DestName: "programmit-auto-memory.py"; Flags: ignoreversion
-Source: "{#RepoRoot}\packaging\windows\programmit-auto-memory.cmd"; DestDir: "{%USERPROFILE}\.programmit\bin"; Flags: ignoreversion
-
 Source: "{#RepoRoot}\VERSION"; DestDir: "{%USERPROFILE}\.programmit"; DestName: "version"; Flags: ignoreversion
+
+[InstallDelete]
+Type: files; Name: "{%USERPROFILE}\.programmit\bin\programmit-auto-memory"
+Type: files; Name: "{%USERPROFILE}\.programmit\bin\programmit-auto-memory.py"
+Type: files; Name: "{%USERPROFILE}\.programmit\bin\programmit-auto-memory.cmd"
+Type: files; Name: "{%USERPROFILE}\.programmit\bin\programmit-auto-memory.exe"
+
+[Messages]
+FinishedLabel=PROGRAMMIT Control se instaló correctamente.%n%nAuto Memory está integrado y no requiere Python.%n%nAbre o reinicia OpenCode para usar el agente.
