@@ -32,12 +32,11 @@ TARGET_GROUP="$(id -gn "$TARGET_USER")"
 AGENT_DIR="$TARGET_HOME/.config/opencode/agents"
 PLUGIN_DIR="$TARGET_HOME/.config/opencode/plugins"
 PROGRAMMIT_DIR="$TARGET_HOME/.programmit"
-BIN_DIR="$PROGRAMMIT_DIR/bin"
 
 mkdir -p \
   "$AGENT_DIR" \
   "$PLUGIN_DIR" \
-  "$BIN_DIR"
+  "$PROGRAMMIT_DIR"
 
 cp \
   "$SOURCE/agents/programmit-control.md" \
@@ -52,25 +51,19 @@ cp \
   "$PLUGIN_DIR/"
 
 cp \
-  "$SOURCE/bin/programmit-auto-memory.py" \
-  "$BIN_DIR/"
-
-cp \
-  "$SOURCE/bin/programmit-auto-memory" \
-  "$BIN_DIR/"
-
-cp \
   "$SOURCE/VERSION" \
   "$PROGRAMMIT_DIR/version"
+
+rm -f \
+  "$PROGRAMMIT_DIR/bin/programmit-auto-memory" \
+  "$PROGRAMMIT_DIR/bin/programmit-auto-memory.py" \
+  "$PROGRAMMIT_DIR/bin/programmit-auto-memory.cmd" \
+  "$PROGRAMMIT_DIR/bin/programmit-auto-memory.exe" 2>/dev/null || true
 
 chmod 600 \
   "$AGENT_DIR/programmit-control.md" \
   "$PLUGIN_DIR/programmit-auto-memory.ts" \
-  "$BIN_DIR/programmit-auto-memory.py" \
   "$PROGRAMMIT_DIR/version"
-
-chmod 700 \
-  "$BIN_DIR/programmit-auto-memory"
 
 chown -R \
   "$TARGET_USER:$TARGET_GROUP" \
@@ -79,3 +72,4 @@ chown -R \
   "$PROGRAMMIT_DIR"
 
 echo "PROGRAMMIT Control instalado para $TARGET_USER."
+echo "Auto Memory integrado: no requiere Python."
