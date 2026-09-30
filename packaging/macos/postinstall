@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE="/usr/local/share/programmit-control"
+
+TARGET_USER="$(stat -f '%Su' /dev/console 2>/dev/null || true)"
+
+if [ -z "$TARGET_USER" ] || \
+   [ "$TARGET_USER" = "root" ] || \
+   [ "$TARGET_USER" = "loginwindow" ]; then
+
+  TARGET_USER="${SUDO_USER:-}"
+fi
+
+if [ -z "$TARGET_USER" ] || \
+   [ "$TARGET_USER" = "root" ]; then
+
+  echo "ERROR: no se pudo detectar el usuario destino."
+  exit 1
+fi
+
+TARGET_HOME="$(dscl . \
+  -read "/Users/$TARGET_USER" NFSHomeDirectory \
+  2>/dev/null | awk '{print $2}')"
+
+if [ -z "$TARGET_HOME" ]; then
+  TARGET_HOME="/Users/$TARGET_USER"
+fi
+
+TARGET_GROUP="$(id -gn "$TARGET_USER")"
+
+AGENT_DIR="$TARGET_HOME/.config/opencode/agents"
+PLUGIN_DIR="$TARGET_HOME/.config/opencode/plugins"
+PROGRAMMIT_DIR="$TARGET_HOME/.programmit"
+BIN_DIR="$PROGRAMMIT_DIR/bin"
+
+mkdir -p \
+  "$AGENT_DIR" \
+  "$PLUGIN_DIR" \
+  "$BIN_DIR"
+
+cp \
+  "$SOURCE/agents/programmit-control.md" \
+  "$AGENT_DIR/"
+
+cp \
+  "$SOURCE/agents/programmit-fast.md" \
+  "$AGENT_DIR/"
+
+cp \
+  "$SOURCE/plugins/programmit-auto-memory.ts" \
+  "$PLUGIN_DIR/"
+
+cp \
+  "$SOURCE/bin/programmit-auto-memory.py" \
+  "$BIN_DIR/"
+
+cp \
+  "$SOURCE/bin/programmit-auto-memory" \
+  "$BIN_DIR/"
+
+cp \
+  "$SOURCE/VERSION" \
+  "$PROGRAMMIT_DIR/version"
+
+chmod 600 \
+  "$AGENT_DIR/programmit-control.md" \
+  "$PLUGIN_DIR/programmit-auto-memory.ts" \
+  "$BIN_DIR/programmit-auto-memory.py" \
+  "$PROGRAMMIT_DIR/version"
+
+chmod 700 \
+  "$BIN_DIR/programmit-auto-memory"
+
+chown -R \
+  "$TARGET_USER:$TARGET_GROUP" \
+  "$AGENT_DIR" \
+  "$PLUGIN_DIR" \
+  "$PROGRAMMIT_DIR"
+
+echo "PROGRAMMIT Control instalado para $TARGET_USER."

@@ -1,0 +1,156 @@
+name: PROGRAMMIT Control Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+
+  validate:
+    runs-on: ubuntu-latest
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: version
+        shell: bash
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          TAG="${GITHUB_REF_NAME#v}"
+
+          if [ "$VERSION" != "$TAG" ]; then
+            echo "VERSION=$VERSION"
+            echo "TAG=$TAG"
+            echo "ERROR: VERSION no coincide con tag."
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+
+  linux:
+    needs: validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Linux
+        run: |
+          chmod +x packaging/linux/build-run.sh
+          packaging/linux/build-run.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*.run
+
+
+  windows:
+    needs: validate
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: |
+          choco install innosetup -y --no-progress
+
+      - name: Build Windows
+        shell: powershell
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+
+          New-Item \
+            -ItemType Directory \
+            -Force \
+            -Path dist | Out-Null
+
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+
+          if (!(Test-Path $iscc)) {
+            throw "ISCC.exe no encontrado"
+          }
+
+          $repo = (Get-Location).Path
+
+          & $iscc `
+            "/DMyVersion=$version" `
+            "/DRepoRoot=$repo" `
+            "packaging\windows\installer.iss"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*.exe
+
+
+  macos:
+    needs: validate
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build macOS
+        run: |
+          chmod +x \
+            packaging/macos/build-pkg.sh \
+            packaging/macos/postinstall \
+            packaging/macos/programmit-auto-memory
+
+          packaging/macos/build-pkg.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*.pkg
+
+
+  release:
+    needs:
+      - validate
+      - linux
+      - windows
+      - macos
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: SHA256
+        run: |
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt
+
+      - name: Publish Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="$GITHUB_REF_NAME"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload \
+              "$TAG" \
+              release-assets/* \
+              --clobber
+          else
+            gh release create \
+              "$TAG" \
+              release-assets/* \
+              --title "PROGRAMMIT Control $TAG" \
+              --generate-notes
+          fi

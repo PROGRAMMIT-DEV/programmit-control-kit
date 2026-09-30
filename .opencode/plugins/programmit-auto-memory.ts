@@ -3,7 +3,9 @@ import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { homedir } from "node:os"
 
-const MEMORY_BIN = join(homedir(), ".programmit", "bin", "programmit-auto-memory")
+const MEMORY_BIN = process.platform === "win32"
+  ? join(homedir(), ".programmit", "bin", "programmit-auto-memory.cmd")
+  : join(homedir(), ".programmit", "bin", "programmit-auto-memory")
 const MAX_MEMORY_CHARS = 12000
 const MAX_FACT_CHARS = 680
 
