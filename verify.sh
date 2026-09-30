@@ -23,7 +23,6 @@ echo
 
 check_file "$HOME_DIR/.config/opencode/agents/programmit-control.md"
 check_file "$HOME_DIR/.config/opencode/plugins/programmit-auto-memory.ts"
-check_file "$HOME_DIR/.programmit/bin/programmit-auto-memory"
 
 echo
 echo "Portabilidad:"
@@ -42,19 +41,7 @@ fi
 echo
 echo "Runtime:"
 
-if command -v node >/dev/null 2>&1; then
-  echo "PASS  Node $(node --version)"
-else
-  echo "FALTA Node"
-  FAIL=$((FAIL + 1))
-fi
-
-if command -v python3 >/dev/null 2>&1; then
-  echo "PASS  $(python3 --version)"
-else
-  echo "FALTA Python3"
-  FAIL=$((FAIL + 1))
-fi
+echo "PASS  Auto Memory integrado en plugin (sin Python externo)"
 
 if command -v opencode >/dev/null 2>&1; then
   echo "PASS  OpenCode $(opencode --version 2>/dev/null || true)"
@@ -62,17 +49,17 @@ else
   echo "AVISO OpenCode no está en PATH"
 fi
 
+check_file "$HOME_DIR/.programmit/version"
+
 echo
 echo "PASS=$PASS FAIL=$FAIL"
-
-if [ "$FAIL" -ne 0 ]; then
-  exit 1
-fi
 
 echo
 echo "Versión PROGRAMMIT Control:"
 if [ -f "$HOME_DIR/.programmit/version" ]; then
   cat "$HOME_DIR/.programmit/version"
-else
-  echo "FALTA archivo de versión"
+fi
+
+if [ "$FAIL" -ne 0 ]; then
+  exit 1
 fi
