@@ -45,17 +45,14 @@ install_global() {
   local AGENT_DIR="$OC_DIR/agents"
   local PLUGIN_DIR="$OC_DIR/plugins"
   local PROGRAMMIT_DIR="$HOME_DIR/.programmit"
-  local BIN_DIR="$PROGRAMMIT_DIR/bin"
 
   echo "Instalando Programmit Control Kit globalmente"
   echo "HOME: $HOME_DIR"
 
   mkdir -p "$AGENT_DIR"
   mkdir -p "$PLUGIN_DIR"
-  mkdir -p "$BIN_DIR"
 
   chmod 700 "$PROGRAMMIT_DIR" || true
-  chmod 700 "$BIN_DIR" || true
 
   if [ -f "$AGENT_DIR/programmit-control.md" ]; then
     backup_file "$AGENT_DIR/programmit-control.md"
@@ -63,10 +60,6 @@ install_global() {
 
   if [ -f "$PLUGIN_DIR/programmit-auto-memory.ts" ]; then
     backup_file "$PLUGIN_DIR/programmit-auto-memory.ts"
-  fi
-
-  if [ -f "$BIN_DIR/programmit-auto-memory" ]; then
-    backup_file "$BIN_DIR/programmit-auto-memory"
   fi
 
   cp \
@@ -83,13 +76,14 @@ install_global() {
     "$KIT_DIR/.opencode/plugins/programmit-auto-memory.ts" \
     "$PLUGIN_DIR/programmit-auto-memory.ts"
 
-  cp \
-    "$KIT_DIR/brain-template/bin/programmit-auto-memory" \
-    "$BIN_DIR/programmit-auto-memory"
-
   chmod 600 "$AGENT_DIR/programmit-control.md"
   chmod 600 "$PLUGIN_DIR/programmit-auto-memory.ts"
-  chmod 700 "$BIN_DIR/programmit-auto-memory"
+
+  rm -f \
+    "$PROGRAMMIT_DIR/bin/programmit-auto-memory" \
+    "$PROGRAMMIT_DIR/bin/programmit-auto-memory.py" \
+    "$PROGRAMMIT_DIR/bin/programmit-auto-memory.cmd" \
+    "$PROGRAMMIT_DIR/bin/programmit-auto-memory.exe" 2>/dev/null || true
 
   printf '%s\n' "$VERSION" > "$PROGRAMMIT_DIR/version"
   chmod 600 "$PROGRAMMIT_DIR/version"
@@ -104,8 +98,8 @@ install_global() {
   echo "Plugin:"
   echo "  $PLUGIN_DIR/programmit-auto-memory.ts"
   echo
-  echo "Motor:"
-  echo "  $BIN_DIR/programmit-auto-memory"
+  echo "Auto Memory:"
+  echo "  integrado en el plugin; no requiere Python ni motor externo."
 }
 
 install_project() {
