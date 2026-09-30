@@ -51,6 +51,7 @@ install_global() {
 
   mkdir -p "$AGENT_DIR"
   mkdir -p "$PLUGIN_DIR"
+  mkdir -p "$PROGRAMMIT_DIR"
 
   chmod 700 "$PROGRAMMIT_DIR" || true
 
