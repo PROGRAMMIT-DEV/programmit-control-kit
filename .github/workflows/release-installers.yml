@@ -136,18 +136,21 @@ jobs:
       - name: Publish Release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: PROGRAMMIT-DEV/programmit-control-kit
         run: |
           TAG="$GITHUB_REF_NAME"
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          if gh release view "$TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
             gh release upload \
               "$TAG" \
               release-assets/* \
-              --clobber
+              --clobber \
+              --repo "$GH_REPO"
           else
             gh release create \
               "$TAG" \
               release-assets/* \
               --title "PROGRAMMIT Control $TAG" \
-              --generate-notes
+              --generate-notes \
+              --repo "$GH_REPO"
           fi
