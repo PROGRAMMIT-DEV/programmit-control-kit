@@ -47,12 +47,12 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 const SECRET_PATTERNS = [
-  /\\bsk-[A-Za-z0-9_-]{12,}/,
-  /\\bgh[pousr]_[A-Za-z0-9]{20,}/,
-  /\\bAKIA[0-9A-Z]{16}\\b/,
-  /Bearer\\s+[A-Za-z0-9._~-]{10,}/i,
+  /\bsk-[A-Za-z0-9_-]{12,}/,
+  /\bgh[pousr]_[A-Za-z0-9]{20,}/,
+  /\bAKIA[0-9A-Z]{16}\b/,
+  /Bearer\s+[A-Za-z0-9._~-]{10,}/i,
   /-----BEGIN .*PRIVATE KEY-----/i,
-  /(password|passwd|api[_ -]?key|secret|access[_ -]?token)\\s*[:=]\\s*\\S+/i,
+  /(password|passwd|api[_ -]?key|secret|access[_ -]?token)\s*[:=]\s*\S+/i,
 ]
 
 const BLOCKED_SOURCE_PARTS = [
@@ -71,7 +71,7 @@ function sanitizeRemote(remote: string) {
       parsed.password = ""
       parsed.search = ""
       parsed.hash = ""
-      return parsed.toString().replace(/\\/$/, "")
+      return parsed.toString().replace(/\/$/, "")
     } catch {
       return ""
     }
@@ -83,7 +83,7 @@ function sanitizeRemote(remote: string) {
 
 function projectSlug(value: string) {
   const cleaned = value.trim().toLowerCase()
-    .replace(/\\.git$/i, "")
+    .replace(/\.git$/i, "")
     .replace(/[^a-z0-9._-]+/g, "-")
     .replace(/^[-._]+|[-._]+$/g, "")
   return cleaned || "project"
@@ -94,7 +94,7 @@ function readEvents(directory: string): MemoryFact[] {
   if (!existsSync(path)) return []
   const events: MemoryFact[] = []
 
-  for (const raw of readFileSync(path, "utf8").split(/\\r?\\n/)) {
+  for (const raw of readFileSync(path, "utf8").split(/\r?\n/)) {
     const line = raw.trim()
     if (!line) continue
     try {
@@ -145,7 +145,7 @@ function appendFactLocal(
     verified: true,
   }
 
-  appendFileSync(join(directory, "FACTS.jsonl"), JSON.stringify(event) + "\\n", "utf8")
+  appendFileSync(join(directory, "FACTS.jsonl"), JSON.stringify(event) + "\n", "utf8")
   return true
 }
 
@@ -234,7 +234,7 @@ function rebuildMemory(root: string, projectName: string, digest: string, direct
     lines.push("")
   }
 
-  writeFileSync(join(directory, "MEMORY.md"), lines.slice(0, 140).join("\\n").trimEnd() + "\\n", "utf8")
+  writeFileSync(join(directory, "MEMORY.md"), lines.slice(0, 140).join("\n").trimEnd() + "\n", "utf8")
 }
 
 function gitRemote(root: string) {
@@ -250,8 +250,8 @@ function resolveMemoryStore(root: string) {
   const identity = remote ? "git:" + remote : "path:" + root
   const digest = createHash("sha256").update(identity).digest("hex").slice(0, 12)
   const rawName = remote
-    ? (remote.replace(/\\/$/, "").split(/[\\\\/:]/).pop() || "project")
-    : (root.split(/[\\\\/]/).filter(Boolean).pop() || "project")
+    ? (remote.replace(/\/$/, "").split(/[\\/:]/).pop() || "project")
+    : (root.split(/[\\/]/).filter(Boolean).pop() || "project")
   const projectName = projectSlug(rawName)
   const directory = join(PROJECTS, projectName + "-" + digest)
 
